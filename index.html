@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TowniVerse Isometric Builder</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0f141a;
+        --panel: rgba(15, 20, 26, 0.9);
+        --accent: #ffe29a;
+        --grid: rgba(255, 255, 255, 0.25);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top, #1c2733, #090c10 60%);
+        color: #f2f6fb;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: 1.5rem 2rem 0.5rem;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.25rem;
+        letter-spacing: 0.05em;
+      }
+
+      p.subtitle {
+        margin: 0;
+        color: rgba(242, 246, 251, 0.7);
+      }
+
+      main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 4fr) minmax(240px, 1fr);
+        gap: 1.25rem;
+        padding: 0 2rem 1.5rem;
+        min-height: calc(100vh - 140px);
+        align-items: stretch;
+      }
+
+      #game-wrapper {
+        position: relative;
+        border-radius: 16px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 25px 65px rgba(0, 0, 0, 0.45);
+        height: 100%;
+        min-height: 100%;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      aside {
+        background: var(--panel);
+        border-radius: 20px;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-height: 0;
+      }
+
+      .panel-title {
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.3rem;
+      }
+
+      #tile-palette {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.75rem;
+      }
+
+      .tile-swatch {
+        position: relative;
+        width: 100%;
+        padding-top: 70%;
+        background: transparent;
+        border: 1px dashed rgba(255, 255, 255, 0.3);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: transform 120ms ease, border-color 120ms ease;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .tile-swatch:focus-visible {
+        outline: 2px solid var(--accent);
+      }
+
+      .tile-swatch.active {
+        border-style: solid;
+        border-color: var(--accent);
+        transform: translateY(-3px);
+      }
+
+      .tile-swatch .diamond {
+        position: absolute;
+        inset: 15%;
+        clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+        border: 2px solid rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(2px);
+      }
+
+      .tile-swatch img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 90%;
+        height: 90%;
+        transform: translate(-50%, -50%);
+        object-fit: contain;
+        pointer-events: none;
+      }
+
+      .tile-swatch .diamond.lot {
+        background: linear-gradient(135deg, #d1e2c3, #a2c28a);
+        border-style: solid;
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+
+      .tile-swatch .diamond .building {
+        position: absolute;
+        width: 55%;
+        height: 70%;
+        left: 50%;
+        bottom: 8%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #f9d4b3, #f6b68a);
+        border-radius: 6px 6px 12px 12px;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.35);
+      }
+
+      .tile-swatch .diamond .building::before {
+        content: "";
+        position: absolute;
+        inset: -18% 4% 60%;
+        background: linear-gradient(135deg, #fc9d6c, #e0703a);
+        clip-path: polygon(50% 0, 100% 60%, 50% 90%, 0 60%);
+      }
+
+      .instructions {
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.8);
+      }
+
+      .instructions kbd {
+        display: inline-block;
+        padding: 0.15rem 0.4rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        font-size: 0.85rem;
+        margin: 0 0.1rem;
+      }
+
+      .upload-panel {
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 16px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+      }
+
+      .upload-panel label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .upload-panel input {
+        padding: 0.4rem 0.6rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(0, 0, 0, 0.25);
+        color: #fff;
+      }
+
+      #drop-zone {
+        border: 2px dashed rgba(255, 255, 255, 0.4);
+        border-radius: 14px;
+        padding: 1rem;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.85);
+        transition: border-color 150ms ease, color 150ms ease;
+        cursor: pointer;
+      }
+
+      #drop-zone.dragover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      #upload-status {
+        min-height: 1.3rem;
+        font-size: 0.85rem;
+        color: var(--accent);
+      }
+
+      @media (max-width: 960px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          order: -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>TowniVerse Isometric Builder</h1>
+      <p class="subtitle">
+        투명 배경의 isometric 타일을 선택해서 와이어 격자 위에 마을을 쌓아 올려보세요.
+      </p>
+    </header>
+    <main>
+      <section id="game-wrapper"></section>
+      <aside>
+        <div>
+          <div class="panel-title">타일 샘플</div>
+          <div id="tile-palette"></div>
+        </div>
+        <div class="instructions">
+          <p>
+            마우스로 빈 위치를 클릭해 타일을 배치하고, 동일한 위치를 다시 클릭하면 타일을 제거할 수
+            있습니다. 모든 타일은 확대된 격자 셀을 정확히 채우도록 설계되어 있습니다.
+          </p>
+          <p>
+            <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 키로 장면을 이동하면 주변 2~3 칸까지 자동으로
+            프리패칭되어 무한한 공간을 부드럽게 탐험할 수 있습니다.
+          </p>
+          <p>화면 하단에 가까운 타일일수록 더 높은 z-index를 가져 자연스러운 깊이를 유지합니다.</p>
+        </div>
+        <div class="upload-panel">
+          <div class="panel-title">새 PNG 업로드</div>
+          <label>
+            라벨
+            <input id="upload-label" type="text" placeholder="예: 새 주택" />
+          </label>
+          <label>
+            originY
+            <input id="upload-origin" type="number" step="0.01" min="0" max="1" value="0.58" />
+          </label>
+          <input id="file-input" type="file" accept="image/png" hidden />
+          <div id="drop-zone">PNG 파일을 드래그하거나 클릭해 업로드</div>
+          <div id="upload-status"></div>
+          <small>※ `upload_server.py`를 실행 중이어야 합니다.</small>
+        </div>
+      </aside>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    <script>
+      const uploadElements = {
+        dropZone: document.getElementById("drop-zone"),
+        fileInput: document.getElementById("file-input"),
+        labelInput: document.getElementById("upload-label"),
+        originInput: document.getElementById("upload-origin"),
+        status: document.getElementById("upload-status"),
+      };
+
+      setupUploader();
+
+      const TILE_WIDTH = 256;
+      const TILE_HEIGHT = 128;
+      const GRID_BUFFER = 3;
+      const WORLD_BOUNDS = 200000;
+      const WHEEL_SCROLL_FACTOR = 0.15;
+      const gridOrigin = { x: 0, y: 0 };
+
+      const paletteContainer = document.getElementById("tile-palette");
+      paletteContainer.textContent = "타일을 불러오는 중...";
+
+      let palette = [];
+      let tileDefinitions = new Map();
+      let activeTileKey = null;
+      const placedTiles = new Map();
+      const spriteCache = new Map();
+      let game = null;
+
+      paletteContainer.addEventListener("click", (event) => {
+        const button = event.target.closest(".tile-swatch");
+        if (!button) return;
+        setActiveTile(button.dataset.tileKey);
+      });
+
+      init();
+
+      async function init() {
+        try {
+          const response = await fetch("tiles/manifest.json", { cache: "no-store" });
+          if (!response.ok) throw new Error("타일 목록을 불러오지 못했습니다.");
+          const manifest = await response.json();
+          palette = Array.isArray(manifest.tiles) ? manifest.tiles : [];
+        } catch (error) {
+          console.error(error);
+          paletteContainer.textContent = "타일 목록을 불러오지 못했습니다.";
+          return;
+        }
+
+        if (!palette.length) {
+          paletteContainer.textContent = "tiles 폴더에 등록된 타일이 없습니다.";
+          return;
+        }
+
+        tileDefinitions = new Map(palette.map((tile) => [tile.key, tile]));
+        activeTileKey = palette[0].key;
+        renderPalette();
+
+        startGame();
+      }
+
+      function renderPalette() {
+        paletteContainer.innerHTML = "";
+        palette.forEach((tile) => {
+          const button = document.createElement("button");
+          button.className = "tile-swatch" + (tile.key === activeTileKey ? " active" : "");
+          button.type = "button";
+          button.dataset.tileKey = tile.key;
+
+          const preview = document.createElement("img");
+          preview.src = tile.file;
+          preview.alt = tile.label;
+          preview.loading = "lazy";
+          preview.decoding = "async";
+          preview.draggable = false;
+
+          button.appendChild(preview);
+          paletteContainer.appendChild(button);
+        });
+      }
+
+      function setActiveTile(tileKey) {
+        if (!tileDefinitions.has(tileKey)) return;
+        activeTileKey = tileKey;
+        document.querySelectorAll(".tile-swatch").forEach((el) => {
+          el.classList.toggle("active", el.dataset.tileKey === tileKey);
+        });
+      }
+
+      function startGame() {
+        const scene = {
+          preload: preloadScene,
+          create: createScene,
+          update: updateScene,
+        };
+
+        const config = {
+          type: Phaser.AUTO,
+          parent: "game-wrapper",
+          width: 1600,
+          height: 900,
+          backgroundColor: "rgba(0,0,0,0)",
+          transparent: true,
+          scene,
+          pixelArt: true,
+          scale: {
+            parent: "game-wrapper",
+            mode: Phaser.Scale.RESIZE,
+            autoCenter: Phaser.Scale.CENTER_BOTH,
+          },
+        };
+
+        game = new Phaser.Game(config);
+      }
+
+      function preloadScene() {
+        palette.forEach((tile) => {
+          const isSvg = tile.file.toLowerCase().endsWith(".svg");
+          const textureScale = tile.textureScale ?? tile.scale ?? 1;
+          if (isSvg && this.load.svg) {
+            this.load.svg(tile.key, tile.file, { scale: textureScale });
+          } else {
+            this.load.image(tile.key, tile.file);
+          }
+        });
+      }
+
+      function createScene() {
+        this.cameras.main.setBounds(
+          -WORLD_BOUNDS,
+          -WORLD_BOUNDS,
+          WORLD_BOUNDS * 2,
+          WORLD_BOUNDS * 2
+        );
+        this.cameras.main.setZoom(1);
+        this.cameras.main.setBackgroundColor("rgba(0,0,0,0)");
+        this.cameras.main.centerOn(0, 0);
+
+        this.gridGraphics = this.add.graphics();
+        this.gridGraphics.setDepth(-1000);
+
+        this.scale.on("resize", () => {
+          refreshSceneView(this);
+          updateDepths(this.cameras.main);
+        });
+
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.input.on("wheel", (pointer, gameObjects, deltaX, deltaY, deltaZ, event) => {
+          const cam = this.cameras.main;
+          cam.scrollX += deltaX * WHEEL_SCROLL_FACTOR;
+          cam.scrollY += deltaY * WHEEL_SCROLL_FACTOR;
+          refreshSceneView(this);
+          updateDepths(cam);
+          if (event) {
+            event.preventDefault();
+          }
+        });
+        this.input.on("pointerdown", (pointer) => {
+          if (!activeTileKey) return;
+          const worldPoint = pointer.positionToCamera(this.cameras.main);
+          const gridPoint = screenToGrid(worldPoint.x, worldPoint.y);
+
+          if (!gridPoint) return;
+          const key = `${gridPoint.col}-${gridPoint.row}`;
+          const existing = placedTiles.get(key);
+          if (existing && existing.tileKey === activeTileKey) {
+            placedTiles.delete(key);
+            const sprite = spriteCache.get(key);
+            if (sprite) {
+              sprite.destroy();
+              spriteCache.delete(key);
+            }
+            refreshSceneView(this);
+            return;
+          }
+
+          placedTiles.set(key, { tileKey: activeTileKey, grid: gridPoint });
+          const sprite = spriteCache.get(key);
+          if (sprite) {
+            sprite.destroy();
+            spriteCache.delete(key);
+          }
+          refreshSceneView(this);
+        });
+
+        refreshSceneView(this);
+      }
+
+      function updateScene(_, delta) {
+        if (!this.cursors) return;
+        const cam = this.cameras.main;
+        const speed = 0.25 * delta;
+        let moved = false;
+
+        if (this.cursors.left.isDown) {
+          cam.scrollX -= speed;
+          moved = true;
+        } else if (this.cursors.right.isDown) {
+          cam.scrollX += speed;
+          moved = true;
+        }
+
+        if (this.cursors.up.isDown) {
+          cam.scrollY -= speed;
+          moved = true;
+        } else if (this.cursors.down.isDown) {
+          cam.scrollY += speed;
+          moved = true;
+        }
+
+        if (moved) {
+          refreshSceneView(this);
+          updateDepths(cam);
+        }
+      }
+
+      function refreshSceneView(scene) {
+        const bounds = getVisibleBounds(scene.cameras.main, GRID_BUFFER);
+        drawWireGrid(scene, bounds);
+        syncVisibleTiles(scene, bounds);
+      }
+
+      function updateDepths(camera) {
+        const offset = camera.scrollY;
+        spriteCache.forEach((sprite) => {
+          sprite.setDepth(sprite.y - offset);
+        });
+      }
+
+      function syncVisibleTiles(scene, bounds) {
+        spriteCache.forEach((sprite, key) => {
+          const data = placedTiles.get(key);
+          if (!data || !isWithinBounds(data.grid, bounds)) {
+            sprite.destroy();
+            spriteCache.delete(key);
+          }
+        });
+
+        placedTiles.forEach((data, key) => {
+          if (!isWithinBounds(data.grid, bounds)) return;
+
+          let sprite = spriteCache.get(key);
+          if (!sprite) {
+            const tileDef = tileDefinitions.get(data.tileKey);
+            if (!tileDef) return;
+            const world = gridToScreen(data.grid.col, data.grid.row);
+            sprite = scene.add.image(world.x, world.y, data.tileKey);
+            sprite.setOrigin(0.5, tileDef.originY ?? 0.5);
+            const targetWidth = tileDef.fitWidth ?? TILE_WIDTH;
+            const autoScale = sprite.width ? targetWidth / sprite.width : 1;
+            const scale = tileDef.displayScale ?? autoScale;
+            if (scale && Math.abs(scale - 1) > 0.001) {
+              sprite.setScale(scale);
+            }
+            spriteCache.set(key, sprite);
+          }
+          sprite.setDepth(sprite.y - scene.cameras.main.scrollY);
+        });
+      }
+
+      function drawWireGrid(scene, bounds) {
+        if (!scene.gridGraphics) return;
+        scene.gridGraphics.clear();
+        scene.gridGraphics.lineStyle(1.5, 0xffffff, 0.22);
+
+        for (let row = bounds.minRow; row <= bounds.maxRow; row++) {
+          for (let col = bounds.minCol; col <= bounds.maxCol; col++) {
+            const center = gridToScreen(col, row);
+            const diamond = diamondPoints(center.x, center.y);
+            scene.gridGraphics.strokePoints(diamond, true);
+          }
+        }
+      }
+
+      function diamondPoints(x, y) {
+        return diamondPointsScaled(x, y);
+      }
+
+      function diamondPointsScaled(x, y, width = TILE_WIDTH, height = TILE_HEIGHT) {
+        return [
+          new Phaser.Math.Vector2(x, y - height / 2),
+          new Phaser.Math.Vector2(x + width / 2, y),
+          new Phaser.Math.Vector2(x, y + height / 2),
+          new Phaser.Math.Vector2(x - width / 2, y),
+        ];
+      }
+
+      function gridToScreen(col, row) {
+        return {
+          x: gridOrigin.x + (col - row) * (TILE_WIDTH / 2),
+          y: gridOrigin.y + (col + row) * (TILE_HEIGHT / 2),
+        };
+      }
+
+      function screenToGrid(x, y) {
+        const grid = screenToGridFloat(x, y);
+        const col = Math.round(grid.col);
+        const row = Math.round(grid.row);
+
+        const world = gridToScreen(col, row);
+        const diamond = diamondPoints(world.x, world.y);
+        const polygon = new Phaser.Geom.Polygon(diamond);
+        if (!Phaser.Geom.Polygon.Contains(polygon, x, y)) {
+          return null;
+        }
+        return { col, row };
+      }
+
+      function screenToGridFloat(x, y) {
+        const cx = x - gridOrigin.x;
+        const cy = y - gridOrigin.y;
+        const col = (cx / (TILE_WIDTH / 2) + cy / (TILE_HEIGHT / 2)) / 2;
+        const row = (cy / (TILE_HEIGHT / 2) - cx / (TILE_WIDTH / 2)) / 2;
+        return { col, row };
+      }
+
+      function getVisibleBounds(camera, padding = 0) {
+        const view = camera.worldView;
+        const corners = [
+          { x: view.left, y: view.top },
+          { x: view.right, y: view.top },
+          { x: view.right, y: view.bottom },
+          { x: view.left, y: view.bottom },
+        ];
+        const cols = [];
+        const rows = [];
+        corners.forEach((corner) => {
+          const grid = screenToGridFloat(corner.x, corner.y);
+          cols.push(grid.col);
+          rows.push(grid.row);
+        });
+
+        const minCol = Math.floor(Math.min(...cols)) - padding;
+        const maxCol = Math.ceil(Math.max(...cols)) + padding;
+        const minRow = Math.floor(Math.min(...rows)) - padding;
+        const maxRow = Math.ceil(Math.max(...rows)) + padding;
+        return { minCol, maxCol, minRow, maxRow };
+      }
+
+      function isWithinBounds(grid, bounds) {
+        return (
+          grid.col >= bounds.minCol &&
+          grid.col <= bounds.maxCol &&
+          grid.row >= bounds.minRow &&
+          grid.row <= bounds.maxRow
+        );
+      }
+
+      function setupUploader() {
+        const {
+          dropZone,
+          fileInput,
+          labelInput,
+          originInput,
+          status,
+        } = uploadElements;
+        if (!dropZone || !fileInput) return;
+
+        const stop = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        };
+
+        ["dragenter", "dragover"].forEach((evt) => {
+          dropZone?.addEventListener(evt, (event) => {
+            stop(event);
+            dropZone.classList.add("dragover");
+          });
+        });
+
+        ["dragleave", "drop"].forEach((evt) => {
+          dropZone?.addEventListener(evt, (event) => {
+            stop(event);
+            dropZone.classList.remove("dragover");
+          });
+        });
+
+        dropZone.addEventListener("drop", (event) => {
+          const file = event.dataTransfer?.files?.[0];
+          if (file) {
+            uploadTileFile(file);
+          }
+        });
+
+        dropZone.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => {
+          const file = fileInput.files?.[0];
+          if (file) {
+            uploadTileFile(file);
+            fileInput.value = "";
+          }
+        });
+
+        async function uploadTileFile(file) {
+          if (!file.type.includes("png")) {
+            status.textContent = "PNG 파일만 업로드 가능합니다.";
+            return;
+          }
+          const label = (labelInput?.value || file.name.replace(/\.png$/i, "")).trim();
+          const origin = parseFloat(originInput?.value || "0.5") || 0.5;
+          status.textContent = "업로드 중...";
+          const formData = new FormData();
+          formData.append("file", file, file.name);
+          formData.append("label", label);
+          formData.append("originY", origin.toString());
+
+          try {
+            const response = await fetch("/upload", {
+              method: "POST",
+              body: formData,
+            });
+            if (!response.ok) {
+              throw new Error(await response.text());
+            }
+            const json = await response.json();
+            status.textContent = json.message || "업로드 완료! 새로고침하면 목록에 나타납니다.";
+            setTimeout(() => window.location.reload(), 1500);
+          } catch (error) {
+            status.textContent = "업로드 실패: " + error;
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

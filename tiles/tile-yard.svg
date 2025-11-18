@@ -1,0 +1,38 @@
+<svg width="256" height="320" viewBox="0 0 256 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- base lot -->
+  <polygon points="128,120 256,184 128,248 0,184" fill="#E7DCB2" stroke="#C7B27D" stroke-width="4"/>
+  <!-- dirt path -->
+  <path d="M72 190L118 210L128 240L84 218Z" fill="#D08C4B" opacity="0.8"/>
+  <!-- water ditch -->
+  <path d="M188 150L236 172L220 178L174 156Z" fill="#7CC0EB" opacity="0.85"/>
+  <!-- stone wall -->
+  <g fill="#9B8B7A" opacity="0.85">
+    <rect x="88" y="176" width="18" height="22" transform="skewY(-26)"/>
+    <rect x="104" y="180" width="18" height="22" transform="skewY(-26)"/>
+    <rect x="120" y="184" width="18" height="22" transform="skewY(-26)"/>
+  </g>
+  <!-- tree trunk -->
+  <rect x="84" y="150" width="12" height="40" fill="#8B5A2B"/>
+  <!-- tree canopy -->
+  <ellipse cx="92" cy="140" rx="45" ry="32" fill="#64B75C"/>
+  <ellipse cx="76" cy="152" rx="30" ry="22" fill="#4F9F44" opacity="0.8"/>
+  <!-- main house body -->
+  <polygon points="160,92 220,120 220,176 160,148" fill="#D4A45C"/>
+  <polygon points="100,92 160,120 160,176 100,148" fill="#CB9346"/>
+  <!-- roof -->
+  <polygon points="130,52 220,120 160,92 70,24" fill="#4F545C"/>
+  <polygon points="130,52 160,92 100,92" fill="#6D737C"/>
+  <!-- roof rails -->
+  <rect x="170" y="100" width="50" height="4" fill="#ECECEC"/>
+  <rect x="150" y="92" width="50" height="4" fill="#ECECEC"/>
+  <!-- door -->
+  <rect x="132" y="136" width="22" height="32" fill="#4A5A3A"/>
+  <!-- laundry lines -->
+  <line x1="90" y1="70" x2="190" y2="110" stroke="#F3F3F3" stroke-width="2"/>
+  <rect x="112" y="84" width="12" height="16" fill="#F7F2F0"/>
+  <rect x="136" y="92" width="14" height="18" fill="#FF8F8F"/>
+  <!-- props -->
+  <rect x="188" y="172" width="24" height="12" fill="#4D89C4"/>
+  <circle cx="208" cy="194" r="10" fill="#6D5844"/>
+  <rect x="64" y="198" width="28" height="10" fill="#8B5A2B"/>
+</svg>
