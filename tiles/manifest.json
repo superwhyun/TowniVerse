@@ -36,27 +36,6 @@
       "scale": 2
     },
     {
-      "key": "tile-house",
-      "label": "마을집",
-      "file": "tiles/tile-house.svg",
-      "originY": 0.555,
-      "scale": 1
-    },
-    {
-      "key": "tile-yard",
-      "label": "동네 마당",
-      "file": "tiles/tile-yard.svg",
-      "originY": 0.575,
-      "scale": 1
-    },
-    {
-      "key": "tile-apartment",
-      "label": "아파트",
-      "file": "tiles/tile-apartment.png",
-      "originY": 0.575,
-      "scale": 1
-    },
-    {
       "key": "tile-house-photo",
       "label": "실사 주택",
       "file": "tiles/house.png",
@@ -82,13 +61,6 @@
       "label": "80년대 아파트",
       "file": "tiles/korea-80-apartment.png",
       "originY": 0.72,
-      "scale": 1
-    },
-    {
-      "key": "tile-rooftop",
-      "label": "옥상 마을",
-      "file": "tiles/isometric_korean_rooftop_tile.svg",
-      "originY": 0.5,
       "scale": 1
     }
   ]
