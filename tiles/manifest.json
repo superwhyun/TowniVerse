@@ -36,13 +36,6 @@
       "scale": 2
     },
     {
-      "key": "tile-house-photo",
-      "label": "실사 주택",
-      "file": "tiles/house.png",
-      "originY": 0.6,
-      "displayScale": 0.18
-    },
-    {
       "key": "tile-korea80",
       "label": "80년대 주택",
       "file": "tiles/korea-80-house.png",
