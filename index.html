@@ -123,6 +123,20 @@
         font-weight: 700;
       }
 
+      .tile-swatch .tile-size {
+        position: absolute;
+        top: 0.35rem;
+        left: 0.35rem;
+        padding: 0.15rem 0.35rem;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.75);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1;
+        pointer-events: none;
+      }
+
       .tile-swatch:focus-visible {
         outline: 2px solid var(--accent);
       }
@@ -219,7 +233,7 @@
         color: #fff;
       }
 
-      .upload-panel button {
+      .upload-panel #export-btn {
         padding: 0.45rem 0.75rem;
         border-radius: 10px;
         border: none;
@@ -230,23 +244,42 @@
         transition: transform 120ms ease, box-shadow 120ms ease;
       }
 
-      .upload-panel button:hover {
+      .upload-panel #export-btn:hover {
         transform: translateY(-1px);
         box-shadow: 0 6px 18px rgba(255, 113, 99, 0.4);
       }
 
-      .tile-swatch .tile-remove {
-        position: absolute;
-        top: 0.35rem;
-        right: 0.35rem;
-        width: 1.4rem;
-        height: 1.4rem;
-        border: none;
-        border-radius: 50%;
-        background: rgba(0, 0, 0, 0.6);
-        color: #fff;
+      .grid-size-toggle {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .size-btn {
+        flex: 1;
+        padding: 0.6rem;
+        border-radius: 8px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.3);
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.9rem;
+        font-weight: 600;
         cursor: pointer;
-        font-weight: 700;
+        transition: all 150ms ease;
+        box-shadow: none;
+      }
+
+      .size-btn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.35);
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .size-btn.active {
+        background: linear-gradient(120deg, #ffa75e, #ff6d6d);
+        border-color: rgba(255, 167, 94, 0.8);
+        color: #0f141a;
+        box-shadow: 0 4px 12px rgba(255, 167, 94, 0.4);
+        transform: translateY(-1px);
       }
 
       #calibration-modal {
@@ -369,6 +402,13 @@
             라벨
             <input id="upload-label" type="text" placeholder="예: 새 주택" />
           </label>
+          <label>
+            격자 크기
+            <div class="grid-size-toggle">
+              <button type="button" class="size-btn active" data-size="1">1x1</button>
+              <button type="button" class="size-btn" data-size="2">2x2</button>
+            </div>
+          </label>
           <input id="file-input" type="file" accept="image/png" hidden />
           <div id="drop-zone">PNG 파일을 드래그하거나 클릭해 업로드</div>
           <div id="upload-status"></div>
@@ -418,6 +458,7 @@
         labelInput: document.getElementById("upload-label"),
         status: document.getElementById("upload-status"),
       };
+      let selectedGridSize = 1; // 1 또는 2
       const exportButton = document.getElementById("export-btn");
 
       const paletteContainer = document.getElementById("tile-palette");
@@ -440,6 +481,7 @@
       init();
 
       async function init() {
+        setupGridSizeToggle();
         setupUploader();
         setupExportButton();
         builtInTiles = await loadManifestTiles();
@@ -449,12 +491,79 @@
         await loadSavedPlacements();
       }
 
+      function setupGridSizeToggle() {
+        const buttons = document.querySelectorAll('.size-btn');
+        console.log('Found buttons:', buttons.length);
+        buttons.forEach(button => {
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Button clicked:', button.dataset.size);
+            buttons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            selectedGridSize = parseInt(button.dataset.size);
+            console.log('Selected grid size:', selectedGridSize);
+          });
+        });
+      }
+
       async function loadSavedPlacements() {
         try {
           const placements = await tileStore.getPlacements();
+
+          // 같은 타일키를 가진 셀들을 그룹화하여 기준점(가장 작은 col, row) 찾기
+          const tileGroups = new Map();
+
           placements.forEach(({ key, tileKey, col, row }) => {
-            placedTiles.set(key, { tileKey, grid: { col, row } });
+            if (!tileGroups.has(tileKey)) {
+              tileGroups.set(tileKey, []);
+            }
+            tileGroups.get(tileKey).push({ key, col, row });
           });
+
+          // 각 그룹에서 연결된 셀들을 찾고 기준점 계산
+          const processedCells = new Set();
+
+          placements.forEach(({ key, tileKey, col, row }) => {
+            if (processedCells.has(key)) return;
+
+            const tileDef = tileDefinitions.get(tileKey);
+            const gridWidth = tileDef?.gridWidth || 1;
+            const gridHeight = tileDef?.gridHeight || 1;
+
+            // 이 셀과 연결된 모든 셀 찾기 (같은 타일키이면서 인접한 gridWidth x gridHeight 영역)
+            const connectedCells = [];
+            for (let r = 0; r < gridHeight; r++) {
+              for (let c = 0; c < gridWidth; c++) {
+                const testKey = `${col + c}-${row + r}`;
+                const testPlacement = placements.find(p => p.key === testKey && p.tileKey === tileKey);
+                if (testPlacement) {
+                  connectedCells.push(testPlacement);
+                }
+              }
+            }
+
+            // 연결된 셀들이 gridWidth x gridHeight만큼 있으면 현재 셀이 기준점
+            if (connectedCells.length === gridWidth * gridHeight) {
+              const baseCol = col;
+              const baseRow = row;
+
+              // 모든 연결된 셀에 대해 placedTiles 설정
+              connectedCells.forEach(({ key: cellKey, col: cellCol, row: cellRow }) => {
+                processedCells.add(cellKey);
+                placedTiles.set(cellKey, {
+                  tileKey,
+                  grid: { col: cellCol, row: cellRow },
+                  isBase: cellCol === baseCol && cellRow === baseRow,
+                  baseCol,
+                  baseRow,
+                  gridWidth,
+                  gridHeight,
+                });
+              });
+            }
+          });
+
           console.log(`Loaded ${placements.length} placements from storage`);
 
           // 게임이 이미 시작되었으면 화면 갱신
@@ -482,6 +591,8 @@
             textureScale: tile.scale ?? 1,
             displayScale: tile.displayScale,
             url: tile.file || tile.url,
+            gridWidth: tile.gridWidth ?? 1,
+            gridHeight: tile.gridHeight ?? 1,
             isCustom: false,
           }));
         } catch (error) {
@@ -501,6 +612,10 @@
         }
 
         palette.forEach((tile) => {
+          // gridWidth, gridHeight 기본값 설정
+          tile.gridWidth = tile.gridWidth ?? 1;
+          tile.gridHeight = tile.gridHeight ?? 1;
+
           if (tile.isCustom) {
             tile.previewUrl = tile.dataUrl;
             const blob = dataURLToBlob(tile.dataUrl);
@@ -545,6 +660,15 @@
           preview.draggable = false;
 
           button.appendChild(preview);
+
+          // 그리드 크기 표시 추가
+          const sizeLabel = document.createElement("span");
+          sizeLabel.className = "tile-size";
+          const gridWidth = tile.gridWidth || 1;
+          const gridHeight = tile.gridHeight || 1;
+          sizeLabel.textContent = `${gridWidth}x${gridHeight}`;
+          button.appendChild(sizeLabel);
+
           if (tile.isCustom) {
             const removeBtn = document.createElement("button");
             removeBtn.type = "button";
@@ -628,6 +752,9 @@
         this.gridGraphics = this.add.graphics();
         this.gridGraphics.setDepth(-1000);
 
+        this.previewGraphics = this.add.graphics();
+        this.previewGraphics.setDepth(10000);
+
         palette.forEach((tile) => {
           if (this.textures.exists(tile.key)) {
             tile.loaded = true;
@@ -648,37 +775,170 @@
           updateDepths(cam);
           event?.preventDefault();
         });
+
+        this.input.on("pointermove", (pointer) => {
+          if (!activeTileKey) {
+            this.previewGraphics.clear();
+            return;
+          }
+          const worldPoint = pointer.positionToCamera(this.cameras.main);
+          const gridPoint = screenToGrid(worldPoint.x, worldPoint.y);
+          if (!gridPoint) {
+            this.previewGraphics.clear();
+            return;
+          }
+
+          const tileDef = tileDefinitions.get(activeTileKey);
+          if (!tileDef) return;
+
+          const gridWidth = tileDef.gridWidth || 1;
+          const gridHeight = tileDef.gridHeight || 1;
+          const { baseCol, baseRow } = getPlacementBase(
+            gridPoint.col,
+            gridPoint.row,
+            gridWidth,
+            gridHeight
+          );
+
+          // 빨간색 테두리로 프리뷰 그리기
+          this.previewGraphics.clear();
+          this.previewGraphics.lineStyle(3, 0xff0000, 0.8);
+
+          for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+              const pos = gridToScreen(baseCol + c, baseRow + r);
+              const diamond = [
+                { x: pos.x, y: pos.y - TILE_HEIGHT / 2 },
+                { x: pos.x + TILE_WIDTH / 2, y: pos.y },
+                { x: pos.x, y: pos.y + TILE_HEIGHT / 2 },
+                { x: pos.x - TILE_WIDTH / 2, y: pos.y },
+              ];
+              this.previewGraphics.beginPath();
+              this.previewGraphics.moveTo(diamond[0].x, diamond[0].y);
+              for (let i = 1; i < diamond.length; i++) {
+                this.previewGraphics.lineTo(diamond[i].x, diamond[i].y);
+              }
+              this.previewGraphics.closePath();
+              this.previewGraphics.strokePath();
+            }
+          }
+        });
+
         this.input.on("pointerdown", async (pointer) => {
-          if (!activeTileKey) return;
           const worldPoint = pointer.positionToCamera(this.cameras.main);
           const gridPoint = screenToGrid(worldPoint.x, worldPoint.y);
 
           if (!gridPoint) return;
-          const key = `${gridPoint.col}-${gridPoint.row}`;
-          const existing = placedTiles.get(key);
-          if (existing && existing.tileKey === activeTileKey) {
-            placedTiles.delete(key);
-            const sprite = spriteCache.get(key);
+
+          // 우클릭 (button === 2): 타일 삭제
+          if (pointer.rightButtonDown()) {
+            const clickedKey = `${gridPoint.col}-${gridPoint.row}`;
+            const clickedTile = placedTiles.get(clickedKey);
+
+            if (clickedTile) {
+              // 기준점 찾기
+              const baseKey = `${clickedTile.baseCol}-${clickedTile.baseRow}`;
+              const baseTile = placedTiles.get(baseKey);
+
+              if (baseTile) {
+                const gw = baseTile.gridWidth || 1;
+                const gh = baseTile.gridHeight || 1;
+
+                // 모든 연결된 격자 제거
+                for (let r = 0; r < gh; r++) {
+                  for (let c = 0; c < gw; c++) {
+                    const key = `${clickedTile.baseCol + c}-${clickedTile.baseRow + r}`;
+                    placedTiles.delete(key);
+                    await tileStore.deletePlacement(key);
+                  }
+                }
+
+                // 스프라이트 제거
+                const sprite = spriteCache.get(baseKey);
+                if (sprite) {
+                  sprite.destroy();
+                  spriteCache.delete(baseKey);
+                }
+
+                refreshSceneView(this);
+              }
+            }
+            return;
+          }
+
+          // 좌클릭: 타일 배치/토글
+          if (!activeTileKey) return;
+
+          const tileDef = tileDefinitions.get(activeTileKey);
+          if (!tileDef) return;
+
+          const gridWidth = tileDef.gridWidth || 1;
+          const gridHeight = tileDef.gridHeight || 1;
+          const { baseCol, baseRow } = getPlacementBase(
+            gridPoint.col,
+            gridPoint.row,
+            gridWidth,
+            gridHeight
+          );
+          const baseKey = `${baseCol}-${baseRow}`;
+
+          // 클릭한 위치가 같은 타일인지 확인 (토글 삭제)
+          const existing = placedTiles.get(baseKey);
+          if (existing && existing.tileKey === activeTileKey &&
+              existing.isBase) {
+            // 타일 제거: 모든 연결된 격자 제거
+            const gw = existing.gridWidth || 1;
+            const gh = existing.gridHeight || 1;
+            for (let r = 0; r < gh; r++) {
+              for (let c = 0; c < gw; c++) {
+                const key = `${baseCol + c}-${baseRow + r}`;
+                placedTiles.delete(key);
+                await tileStore.deletePlacement(key);
+              }
+            }
+            // 스프라이트 제거 (기준점에만 있음)
+            const sprite = spriteCache.get(baseKey);
             if (sprite) {
               sprite.destroy();
-              spriteCache.delete(key);
+              spriteCache.delete(baseKey);
             }
-            // DB에서도 삭제
-            await tileStore.deletePlacement(key);
             refreshSceneView(this);
             return;
           }
 
-          placedTiles.set(key, { tileKey: activeTileKey, grid: gridPoint });
-          const sprite = spriteCache.get(key);
-          if (sprite) {
-            sprite.destroy();
-            spriteCache.delete(key);
+          // 충돌 체크: 배치하려는 모든 격자가 비어있는지 확인
+          for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+              const key = `${baseCol + c}-${baseRow + r}`;
+              if (placedTiles.has(key)) {
+                console.log("충돌: 이미 타일이 배치되어 있습니다.");
+                return; // 충돌 발생, 배치 취소
+              }
+            }
           }
-          // DB에 저장
-          await tileStore.savePlacement(key, activeTileKey, gridPoint.col, gridPoint.row);
+
+          // 타일 배치: 모든 격자에 점유 정보 저장
+          for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+              const key = `${baseCol + c}-${baseRow + r}`;
+              placedTiles.set(key, {
+                tileKey: activeTileKey,
+                grid: { col: baseCol + c, row: baseRow + r },
+                isBase: r === 0 && c === 0, // 좌측 상단이 기준점
+                baseCol,
+                baseRow,
+                gridWidth,
+                gridHeight,
+              });
+              await tileStore.savePlacement(key, activeTileKey, baseCol + c, baseRow + r);
+            }
+          }
+
           refreshSceneView(this);
         });
+
+        // 우클릭 컨텍스트 메뉴 방지
+        this.input.mouse.disableContextMenu();
 
         refreshSceneView(this);
       }
@@ -727,13 +987,15 @@
       function syncVisibleTiles(scene, bounds) {
         spriteCache.forEach((sprite, key) => {
           const data = placedTiles.get(key);
-          if (!data || !isWithinBounds(data.grid, bounds)) {
+          if (!data || !data.isBase || !isWithinBounds(data.grid, bounds)) {
             sprite.destroy();
             spriteCache.delete(key);
           }
         });
 
         placedTiles.forEach((data, key) => {
+          // 기준점(isBase)인 타일만 렌더링
+          if (!data.isBase) return;
           if (!isWithinBounds(data.grid, bounds)) return;
 
           if (!tileDefinitions.get(data.tileKey)?.loaded) {
@@ -744,7 +1006,28 @@
           if (!sprite) {
             const tileDef = tileDefinitions.get(data.tileKey);
             if (!tileDef) return;
-            const world = gridToScreen(data.grid.col, data.grid.row);
+
+            // 기준점(좌측 상단)에서 스프라이트 배치
+            // 다중 격자 타일의 경우, 중심 위치에 스프라이트 배치
+            const gridWidth = data.gridWidth || 1;
+            const gridHeight = data.gridHeight || 1;
+            // 발판의 좌우 끝(iso 기준)을 구해 중간 지점에 스프라이트를 두어야 정확히 격자와 맞음
+            const baseCol = data.baseCol ?? data.grid.col;
+            const baseRow = data.baseRow ?? data.grid.row;
+
+            // 2x2 타일의 경우 우하향으로 0.5 타일 이동
+            const rowAdjustment = (gridWidth === 2 && gridHeight === 2) ? 0.75 : 0;
+            const colAdjustment = (gridWidth === 2 && gridHeight === 2) ? -0.75 : 0;
+
+            const bottomLeft = gridToScreen(baseCol, baseRow + gridHeight - 1 + rowAdjustment);
+            const bottomRight = gridToScreen(
+              baseCol + gridWidth - 1 + rowAdjustment,
+              baseRow + gridHeight - 1 + colAdjustment
+            );
+            const world = {
+              x: (bottomLeft.x + bottomRight.x) / 2,
+              y: (bottomLeft.y + bottomRight.y) / 2,
+            };
             sprite = scene.add.image(world.x, world.y, data.tileKey);
             sprite.setOrigin(0.5, tileDef.originY ?? 0.5);
             const targetWidth = tileDef.fitWidth ?? TILE_WIDTH;
@@ -813,6 +1096,15 @@
         const col = (cx / (TILE_WIDTH / 2) + cy / (TILE_HEIGHT / 2)) / 2;
         const row = (cy / (TILE_HEIGHT / 2) - cx / (TILE_WIDTH / 2)) / 2;
         return { col, row };
+      }
+
+      function getPlacementBase(anchorCol, anchorRow, gridWidth = 1, gridHeight = 1) {
+        const safeWidth = Math.max(1, gridWidth);
+        const safeHeight = Math.max(1, gridHeight);
+        // anchor는 타일의 하단 중앙 마름모, base는 좌측 상단 셀
+        const baseRow = anchorRow - (safeHeight - 1);
+        const baseCol = anchorCol - Math.round((safeWidth - 1) / 2);
+        return { baseCol, baseRow };
       }
 
       function getVisibleBounds(camera, padding = 0) {
@@ -897,13 +1189,15 @@
             return;
           }
           const label = (labelInput?.value || file.name.replace(/\.png$/i, "")).trim();
+          const gridWidth = selectedGridSize;
+          const gridHeight = selectedGridSize;
           status.textContent = "이미지 준비...";
 
           try {
             // 원본 이미지를 적당한 크기로 리사이즈 (calibration용)
             const basePreview = await resizePngBlob(file, TILE_WIDTH * 2);
             status.textContent = "보정 준비...";
-            const calibration = await calibrator.open(basePreview);
+            const calibration = await calibrator.open(basePreview, gridWidth, gridHeight);
 
             // calibration이 완료되면 이미 정확한 크기로 변환되어 있음
             const finalBlob = calibration?.blob || basePreview;
@@ -912,7 +1206,8 @@
             // 이미지 크기를 확인하여 originY 계산
             const img = await loadImageElement(dataUrl);
             // 마름모 중심이 격자 중심에 와야 함
-            // 마름모 하단이 이미지 하단에 있고, 마름모 높이는 TILE_HEIGHT/2
+            // 기준점은 좌측 상단(row=0)이지만, 스프라이트는 row=(gridHeight-1)에 배치됨
+            // 따라서 그림의 하단 마름모 중심이 이미지 하단에서 TILE_HEIGHT/2 위치에 와야 함
             // originY = (이미지 하단 - TILE_HEIGHT/2) / 이미지 높이
             const diamondCenterFromBottom = TILE_HEIGHT / 2;
             const calculatedOriginY = (img.height - diamondCenterFromBottom) / img.height;
@@ -922,6 +1217,8 @@
               originY: calculatedOriginY,
               dataUrl,
               displayScale: 1,  // 이미 정확한 크기로 변환됨
+              gridWidth,
+              gridHeight,
             });
             status.textContent = "업로드 완료! 팔레트를 갱신합니다.";
             await loadPaletteAndStart();
@@ -1141,6 +1438,8 @@
         let offsetX = 0;
         let offsetY = 0;
         let points = [];
+        let currentGridWidth = 1;
+        let currentGridHeight = 1;
 
         canvas.addEventListener("click", (event) => {
           if (!image || points.length >= 4) return;
@@ -1181,20 +1480,32 @@
               left: points[3],
             };
 
-            // 목표: 정확한 256x128 마름모로 변환하고 타일 크기에 맞추기
-            // 출력 캔버스: 타일 크기의 2배로 설정 (변환 중 필요한 여유 공간)
-            const outputWidth = TILE_WIDTH * 2;
+            // 격자 크기에 따라 마름모 크기 조정
+            // 1x1: 256x128 다이아몬드
+            // 2x1: 가로로 2개 격자 = 가로 방향으로 TILE_WIDTH만큼 더 넓음
+            // 1x2: 세로로 2개 격자 = 세로 방향으로 TILE_HEIGHT만큼 더 넓음
+            // 2x2: 양쪽 모두 확장
+
+            // 다중 격자 타일의 실제 다이아몬드 크기 계산
+            // gridWidth=2, gridHeight=1 인 경우:
+            //   - 가로 범위: col 0~1 을 차지
+            //   - 실제 다이아몬드 너비: TILE_WIDTH * gridWidth
+            const diamondWidth = TILE_WIDTH * currentGridWidth;
+            const diamondHeight = TILE_HEIGHT * currentGridHeight;
+
+            // 출력 캔버스 크기 (여유 공간 포함)
+            const outputWidth = diamondWidth * 2;
             const outputHeight = TILE_HEIGHT * 4;  // 높이는 건물이 높을 수 있으니 여유있게
 
             // 마름모를 캔버스 하단 중앙에 배치
             const centerX = outputWidth / 2;
             const baseY = outputHeight - TILE_HEIGHT;  // 하단에서 한 타일 높이만큼 위
 
-            // 목표: 정확한 256x128 마름모를 하단 중앙에 배치
-            const dstTop = { x: centerX, y: baseY - TILE_HEIGHT / 2 };
-            const dstRight = { x: centerX + TILE_WIDTH / 2, y: baseY };
-            const dstBottom = { x: centerX, y: baseY + TILE_HEIGHT / 2 };
-            const dstLeft = { x: centerX - TILE_WIDTH / 2, y: baseY };
+            // 목표: 격자 크기에 맞는 마름모를 하단 중앙에 배치
+            const dstTop = { x: centerX, y: baseY - diamondHeight / 2 };
+            const dstRight = { x: centerX + diamondWidth / 2, y: baseY };
+            const dstBottom = { x: centerX, y: baseY + diamondHeight / 2 };
+            const dstLeft = { x: centerX - diamondWidth / 2, y: baseY };
 
             const warpedBlob = await warpImageWithPerspective(
               image,
@@ -1206,7 +1517,7 @@
 
             // 여백 제거 - 하지만 마름모 하단을 기준점으로 유지
             status.textContent = "여백 제거 중...";
-            const trimmedBlob = await trimTransparentEdgesWithBase(warpedBlob, baseY + TILE_HEIGHT / 2);
+            const trimmedBlob = await trimTransparentEdgesWithBase(warpedBlob, baseY + diamondHeight / 2);
 
             close({ blob: trimmedBlob });
           } catch (error) {
@@ -1281,7 +1592,9 @@
         }
 
         return {
-          async open(file) {
+          async open(file, gridWidth = 1, gridHeight = 1) {
+            currentGridWidth = gridWidth;
+            currentGridHeight = gridHeight;
             const dataUrl = await blobToDataURL(file);
             image = await loadImageElement(dataUrl);
             points = [];
@@ -1523,6 +1836,8 @@
                   label: entry.label,
                   originY: entry.originY,
                   displayScale: entry.displayScale ?? 1,
+                  gridWidth: entry.gridWidth ?? 1,
+                  gridHeight: entry.gridHeight ?? 1,
                   dataUrl: entry.dataUrl,
                   isCustom: true,
                 }));
@@ -1531,7 +1846,7 @@
               request.onerror = () => reject(request.error);
             });
           },
-          async addTile({ label, originY, dataUrl, displayScale = 1 }) {
+          async addTile({ label, originY, dataUrl, displayScale = 1, gridWidth = 1, gridHeight = 1 }) {
             const key = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
             const entry = {
               key,
@@ -1539,6 +1854,8 @@
               originY,
               dataUrl,
               displayScale,
+              gridWidth,
+              gridHeight,
               createdAt: Date.now(),
             };
             const store = await tx("readwrite");
@@ -1547,7 +1864,7 @@
               request.onsuccess = () => resolve();
               request.onerror = () => reject(request.error);
             });
-            return { ...entry, dataUrl: entry.dataUrl, displayScale, isCustom: true };
+            return { ...entry, dataUrl: entry.dataUrl, displayScale, gridWidth, gridHeight, isCustom: true };
           },
           async deleteTile(key) {
             const store = await tx("readwrite");
