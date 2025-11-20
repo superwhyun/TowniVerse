@@ -64,8 +64,8 @@
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.08);
         box-shadow: 0 25px 65px rgba(0, 0, 0, 0.45);
+        width: 100%;
         height: 100%;
-        min-height: 100%;
       }
 
       canvas {
@@ -84,6 +84,20 @@
         min-height: 0;
       }
 
+      aside > div:first-child {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      #tile-palette {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+      }
+
       .panel-title {
         font-weight: 600;
         letter-spacing: 0.06em;
@@ -92,14 +106,14 @@
 
       #tile-palette {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        grid-template-columns: repeat(auto-fill, 100px);
         gap: 0.75rem;
       }
 
       .tile-swatch {
         position: relative;
-        width: 100%;
-        padding-top: 70%;
+        width: 100px;
+        height: 100px;
         background: transparent;
         border: 1px dashed rgba(255, 255, 255, 0.3);
         border-radius: 12px;
@@ -233,7 +247,8 @@
         color: #fff;
       }
 
-      .upload-panel #export-btn {
+      .upload-panel #export-btn,
+      .upload-panel #import-btn {
         padding: 0.45rem 0.75rem;
         border-radius: 10px;
         border: none;
@@ -244,9 +259,18 @@
         transition: transform 120ms ease, box-shadow 120ms ease;
       }
 
-      .upload-panel #export-btn:hover {
+      .upload-panel #import-btn {
+        background: linear-gradient(120deg, #6d9aff, #5e7aff);
+      }
+
+      .upload-panel #export-btn:hover,
+      .upload-panel #import-btn:hover {
         transform: translateY(-1px);
         box-shadow: 0 6px 18px rgba(255, 113, 99, 0.4);
+      }
+
+      .upload-panel #import-btn:hover {
+        box-shadow: 0 6px 18px rgba(109, 154, 255, 0.4);
       }
 
       .grid-size-toggle {
@@ -394,7 +418,13 @@
       <aside>
         <div>
           <div class="panel-title">타일 샘플</div>
+          <input id="tile-search" type="text" placeholder="타일 검색..." style="width: 100%; padding: 0.5rem; margin-bottom: 0.75rem; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.25); color: #fff;" />
           <div id="tile-palette"></div>
+          <div id="tile-pagination" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.85rem;">
+            <button id="prev-page" style="padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(0, 0, 0, 0.3); color: #fff; cursor: pointer;">◀</button>
+            <span id="page-info" style="color: rgba(255, 255, 255, 0.7);"></span>
+            <button id="next-page" style="padding: 0.3rem 0.6rem; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(0, 0, 0, 0.3); color: #fff; cursor: pointer;">▶</button>
+          </div>
         </div>
         <div class="upload-panel">
           <div class="panel-title">새 PNG 업로드</div>
@@ -413,6 +443,7 @@
           <div id="drop-zone">PNG 파일을 드래그하거나 클릭해 업로드</div>
           <div id="upload-status"></div>
           <button type="button" id="export-btn">ZIP으로 내보내기</button>
+          <button type="button" id="import-btn">URL에서 가져오기</button>
           <small>※ 업로드한 타일은 브라우저에만 저장됩니다. originY는 자동 계산됩니다.</small>
         </div>
       </aside>
@@ -442,13 +473,6 @@
       const gridOrigin = { x: 0, y: 0 };
 
       let builtInTiles = [];
-      const fallbackTiles = [
-        { key: "tile-grass", label: "잔디", originY: 0.5, url: "tiles/tile-grass.svg", textureScale: 1 },
-        { key: "tile-sand", label: "모래", originY: 0.5, url: "tiles/tile-sand.svg", textureScale: 1.5 },
-        { key: "tile-water", label: "물", originY: 0.5, url: "tiles/tile-water.svg", textureScale: 1 },
-        { key: "tile-soil", label: "토양", originY: 0.5, url: "tiles/tile-soil.svg", textureScale: 1 },
-        { key: "tile-snow", label: "설원", originY: 0.5, url: "tiles/tile-snow.svg", textureScale: 2 },
-      ].map((tile) => ({ ...tile, isCustom: false }));
 
       const tileStore = createTileStore();
       const calibrator = createCalibrator();
@@ -460,17 +484,24 @@
       };
       let selectedGridSize = 1; // 1 또는 2
       const exportButton = document.getElementById("export-btn");
+      const importButton = document.getElementById("import-btn");
 
       const paletteContainer = document.getElementById("tile-palette");
       paletteContainer.textContent = "타일을 불러오는 중...";
 
       let palette = [];
+      let filteredPalette = [];
       let tileDefinitions = new Map();
       let activeTileKey = null;
       const placedTiles = new Map();
       const spriteCache = new Map();
       const runtimeUrls = new Map();
       let game = null;
+
+      // 페이지네이션 설정
+      const TILES_PER_PAGE = 12;
+      let currentPage = 0;
+      let searchQuery = "";
 
       paletteContainer.addEventListener("click", (event) => {
         const button = event.target.closest(".tile-swatch");
@@ -484,11 +515,81 @@
         setupGridSizeToggle();
         setupUploader();
         setupExportButton();
+        setupImportButton();
+        setupSearch();
+        setupPagination();
         builtInTiles = await loadManifestTiles();
         await loadPaletteAndStart();
 
         // 저장된 배치 로드
         await loadSavedPlacements();
+      }
+
+      function setupSearch() {
+        const searchInput = document.getElementById("tile-search");
+        searchInput.addEventListener("input", (e) => {
+          searchQuery = e.target.value.toLowerCase();
+          currentPage = 0;
+          filterAndRenderPalette();
+        });
+      }
+
+      function setupPagination() {
+        const prevBtn = document.getElementById("prev-page");
+        const nextBtn = document.getElementById("next-page");
+
+        prevBtn.addEventListener("click", () => {
+          if (currentPage > 0) {
+            currentPage--;
+            filterAndRenderPalette();
+          }
+        });
+
+        nextBtn.addEventListener("click", () => {
+          const totalPages = Math.ceil(filteredPalette.length / TILES_PER_PAGE);
+          if (currentPage < totalPages - 1) {
+            currentPage++;
+            filterAndRenderPalette();
+          }
+        });
+      }
+
+      function filterAndRenderPalette() {
+        // 검색어로 필터링
+        if (searchQuery) {
+          filteredPalette = palette.filter(tile =>
+            tile.label.toLowerCase().includes(searchQuery) ||
+            tile.key.toLowerCase().includes(searchQuery)
+          );
+        } else {
+          filteredPalette = [...palette];
+        }
+
+        renderPalette();
+        updatePaginationInfo();
+      }
+
+      function updatePaginationInfo() {
+        const pageInfo = document.getElementById("page-info");
+        const prevBtn = document.getElementById("prev-page");
+        const nextBtn = document.getElementById("next-page");
+
+        const totalPages = Math.ceil(filteredPalette.length / TILES_PER_PAGE);
+
+        if (totalPages === 0) {
+          pageInfo.textContent = "타일 없음";
+          prevBtn.disabled = true;
+          nextBtn.disabled = true;
+        } else {
+          pageInfo.textContent = `${currentPage + 1} / ${totalPages}`;
+          prevBtn.disabled = currentPage === 0;
+          nextBtn.disabled = currentPage >= totalPages - 1;
+        }
+
+        prevBtn.style.opacity = prevBtn.disabled ? "0.3" : "1";
+        nextBtn.style.opacity = nextBtn.disabled ? "0.3" : "1";
+        prevBtn.style.cursor = prevBtn.disabled ? "not-allowed" : "pointer";
+        nextBtn.style.cursor = nextBtn.disabled ? "not-allowed" : "pointer";
       }
 
       function setupGridSizeToggle() {
@@ -579,33 +680,24 @@
       }
 
       async function loadManifestTiles() {
-        try {
-          const response = await fetch("tiles/manifest.json", { cache: "no-store" });
-          if (!response.ok) throw new Error("manifest load failed");
-          const manifest = await response.json();
-          if (!Array.isArray(manifest.tiles)) throw new Error("no tiles array");
-          return manifest.tiles.map((tile) => ({
-            key: tile.key,
-            label: tile.label || tile.key,
-            originY: tile.originY ?? 0.5,
-            textureScale: tile.scale ?? 1,
-            displayScale: tile.displayScale,
-            url: tile.file || tile.url,
-            gridWidth: tile.gridWidth ?? 1,
-            gridHeight: tile.gridHeight ?? 1,
-            isCustom: false,
-          }));
-        } catch (error) {
-          console.warn("manifest 로드 실패, 기본 타일 사용", error);
-          return fallbackTiles;
-        }
+        // 기본 타일 제거됨 - 빈 배열 반환
+        return [];
       }
 
       async function loadPaletteAndStart() {
         const customTiles = await tileStore.getTiles();
         runtimeUrls.forEach((url) => URL.revokeObjectURL(url));
         runtimeUrls.clear();
-        palette = [...builtInTiles, ...customTiles];
+
+        // 빈 타일 필터링 (dataUrl이나 url이 없는 타일 제외)
+        palette = [...builtInTiles, ...customTiles].filter(tile => {
+          if (tile.isCustom) {
+            return tile.dataUrl && tile.dataUrl.length > 0;
+          } else {
+            return tile.url || tile.file;
+          }
+        });
+
         if (!palette.length) {
           paletteContainer.textContent = "등록된 타일이 없습니다.";
           return;
@@ -636,7 +728,7 @@
           activeTileKey = palette[0].key;
         }
 
-        renderPalette();
+        filterAndRenderPalette();
         if (!game) {
           startGame();
         } else {
@@ -646,7 +738,18 @@
 
       function renderPalette() {
         paletteContainer.innerHTML = "";
-        palette.forEach((tile) => {
+
+        // 현재 페이지의 타일만 표시
+        const startIdx = currentPage * TILES_PER_PAGE;
+        const endIdx = startIdx + TILES_PER_PAGE;
+        const tilesToShow = filteredPalette.slice(startIdx, endIdx);
+
+        if (tilesToShow.length === 0) {
+          paletteContainer.textContent = searchQuery ? "검색 결과가 없습니다." : "등록된 타일이 없습니다.";
+          return;
+        }
+
+        tilesToShow.forEach((tile) => {
           const button = document.createElement("button");
           button.className = "tile-swatch" + (tile.key === activeTileKey ? " active" : "");
           button.type = "button";
@@ -679,7 +782,7 @@
               event.stopPropagation();
               await tileStore.deleteTile(tile.key);
               if (activeTileKey === tile.key) {
-                activeTileKey = builtInTiles[0]?.key || null;
+                activeTileKey = palette[0]?.key || null;
               }
               await loadPaletteAndStart();
             });
@@ -719,8 +822,10 @@
           pixelArt: true,
           scale: {
             parent: "game-wrapper",
-            mode: Phaser.Scale.RESIZE,
+            mode: Phaser.Scale.FIT,
             autoCenter: Phaser.Scale.CENTER_BOTH,
+            width: '100%',
+            height: '100%',
           },
         };
         game = new Phaser.Game(config);
@@ -761,9 +866,17 @@
           }
         });
 
+        let resizeDebounceTimer = null;
         this.scale.on("resize", () => {
-          refreshSceneView(this);
-          updateDepths(this.cameras.main);
+          // 리사이즈 이벤트 디바운싱으로 과도한 호출 방지
+          if (resizeDebounceTimer) {
+            clearTimeout(resizeDebounceTimer);
+          }
+          resizeDebounceTimer = setTimeout(() => {
+            refreshSceneView(this);
+            updateDepths(this.cameras.main);
+            resizeDebounceTimer = null;
+          }, 100);
         });
 
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -1090,8 +1203,9 @@
               sprite.setScale(scale);
             }
             spriteCache.set(key, sprite);
+            // 새로 생성된 스프라이트만 depth 설정
+            sprite.setDepth(sprite.y - scene.cameras.main.scrollY);
           }
-          sprite.setDepth(sprite.y - scene.cameras.main.scrollY);
         });
       }
 
@@ -1283,8 +1397,8 @@
             setActiveTile(savedTile.key);
 
             // 디버깅: 타일 로드 상태 확인
-            const newTile = tileDefinitions.get(savedTile.key);
-            console.log("New tile loaded status:", newTile?.loaded, "key:", savedTile.key);
+            const loadedTile = tileDefinitions.get(savedTile.key);
+            console.log("New tile loaded status:", loadedTile?.loaded, "key:", savedTile.key);
 
             status.textContent = "새 타일이 추가되었습니다. 클릭하여 배치하세요!";
           } catch (error) {
@@ -1310,6 +1424,55 @@
         });
       }
 
+      async function clearAllData() {
+        // IndexedDB 모든 데이터 삭제
+        await tileStore.clearAll();
+
+        // 메모리상의 데이터 초기화
+        palette = [];
+        placedTiles.clear();
+        spriteCache.forEach(sprite => sprite.destroy());
+        spriteCache.clear();
+        runtimeUrls.forEach(url => URL.revokeObjectURL(url));
+        runtimeUrls.clear();
+      }
+
+      function setupImportButton() {
+        if (!importButton) return;
+        importButton.addEventListener("click", async () => {
+          // 현재 주소와 포트를 기본값으로 설정
+          const defaultUrl = `${window.location.protocol}//${window.location.host}/`;
+          const url = prompt("타일셋 URL을 입력하세요:\n\n- ZIP 파일: https://example.com/tileset.zip\n- 디렉토리: https://example.com/tileset/\n\n※ 경고: 기존 타일이 모두 삭제됩니다!", defaultUrl);
+          if (!url) return;
+
+          // 확인 메시지
+          if (!confirm("기존에 저장된 모든 타일과 배치가 삭제됩니다.\n계속하시겠습니까?")) {
+            return;
+          }
+
+          importButton.disabled = true;
+          const originalText = importButton.textContent;
+          importButton.textContent = "가져오는 중...";
+          try {
+            // 기존 데이터 삭제
+            await clearAllData();
+
+            // ZIP 파일인지 디렉토리인지 확인
+            if (url.toLowerCase().endsWith('.zip')) {
+              await importFromZipUrl(url);
+            } else {
+              await importFromUrl(url);
+            }
+            alert("타일을 성공적으로 가져왔습니다!");
+          } catch (error) {
+            alert("가져오기 실패: " + error.message);
+          } finally {
+            importButton.disabled = false;
+            importButton.textContent = originalText;
+          }
+        });
+      }
+
       async function exportProject() {
         if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
         const zip = new JSZip();
@@ -1320,6 +1483,8 @@
             originY: tile.originY,
             scale: tile.textureScale ?? tile.scale ?? 1,
             displayScale: tile.displayScale,
+            gridWidth: tile.gridWidth ?? 1,
+            gridHeight: tile.gridHeight ?? 1,
             file: `tiles/${tile.key}${tile.isSvg ? ".svg" : ".png"}`,
           })),
           placements: Array.from(placedTiles.values()).map((entry) => ({
@@ -1349,6 +1514,162 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
+      async function importFromZipUrl(zipUrl) {
+        if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
+
+        console.log('Fetching ZIP from:', zipUrl);
+
+        // Fetch the ZIP file
+        const response = await fetch(zipUrl);
+        if (!response.ok) {
+          throw new Error(`ZIP 파일을 불러올 수 없습니다 (${response.status})`);
+        }
+
+        const zipBlob = await response.blob();
+        const zip = await JSZip.loadAsync(zipBlob);
+
+        // Read manifest.json
+        const manifestFile = zip.file('manifest.json');
+        if (!manifestFile) {
+          throw new Error('ZIP 파일에 manifest.json이 없습니다');
+        }
+
+        const manifestText = await manifestFile.async('text');
+        const manifest = JSON.parse(manifestText);
+
+        if (!manifest.tiles || !Array.isArray(manifest.tiles)) {
+          throw new Error('잘못된 manifest 형식입니다');
+        }
+
+        // Get existing tiles to check for duplicates
+        const existingTiles = await tileStore.getTiles();
+        const existingLabels = new Set(existingTiles.map(t => t.label));
+
+        // Import each tile
+        let importedCount = 0;
+        let skippedCount = 0;
+        for (const tileEntry of manifest.tiles) {
+          try {
+            // Skip if already exists
+            if (existingLabels.has(tileEntry.label)) {
+              console.log(`타일 건너뛰기 (이미 존재함): ${tileEntry.label}`);
+              skippedCount++;
+              continue;
+            }
+
+            const imageFile = zip.file(tileEntry.file);
+            if (!imageFile) {
+              console.warn(`이미지 파일을 찾을 수 없습니다: ${tileEntry.file}`);
+              continue;
+            }
+
+            const imageBlob = await imageFile.async('blob');
+            const dataUrl = await blobToDataURL(imageBlob);
+
+            // Add to IndexedDB
+            await tileStore.addTile({
+              label: tileEntry.label,
+              originY: tileEntry.originY,
+              dataUrl: dataUrl,
+              displayScale: tileEntry.displayScale ?? 1,
+              gridWidth: tileEntry.gridWidth ?? 1,
+              gridHeight: tileEntry.gridHeight ?? 1,
+            });
+
+            importedCount++;
+          } catch (error) {
+            console.error(`타일 가져오기 실패 (${tileEntry.label}):`, error);
+          }
+        }
+
+        console.log(`가져오기 완료: ${importedCount}개 추가, ${skippedCount}개 건너뜀`);
+
+        if (importedCount === 0) {
+          throw new Error('가져온 타일이 없습니다');
+        }
+
+        // Refresh the palette display and load textures
+        await loadPaletteAndStart();
+        await registerMissingTextures();
+      }
+
+      async function importFromUrl(baseUrl) {
+        // Ensure baseUrl ends with /
+        const normalizedUrl = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+
+        // Fetch manifest.json
+        const manifestUrl = normalizedUrl + 'manifest.json';
+        console.log('Fetching manifest from:', manifestUrl);
+
+        let manifestResponse;
+        try {
+          manifestResponse = await fetch(manifestUrl);
+        } catch (error) {
+          throw new Error(`네트워크 오류: ${error.message}\n\nCORS 설정을 확인하거나 로컬 서버를 사용하세요.`);
+        }
+
+        if (!manifestResponse.ok) {
+          throw new Error(`manifest.json을 찾을 수 없습니다 (${manifestResponse.status})\n\nURL: ${manifestUrl}\n\n확인사항:\n- URL이 정확한가요?\n- manifest.json 파일이 해당 위치에 있나요?\n- 서버의 CORS 설정이 되어있나요?`);
+        }
+
+        const manifest = await manifestResponse.json();
+        if (!manifest.tiles || !Array.isArray(manifest.tiles)) {
+          throw new Error('잘못된 manifest 형식입니다');
+        }
+
+        // Get existing tiles to check for duplicates
+        const existingTiles = await tileStore.getTiles();
+        const existingLabels = new Set(existingTiles.map(t => t.label));
+
+        // Import each tile
+        let importedCount = 0;
+        let skippedCount = 0;
+        for (const tileEntry of manifest.tiles) {
+          try {
+            // Skip if already exists
+            if (existingLabels.has(tileEntry.label)) {
+              console.log(`타일 건너뛰기 (이미 존재함): ${tileEntry.label}`);
+              skippedCount++;
+              continue;
+            }
+
+            const imageUrl = normalizedUrl + tileEntry.file;
+            const imageResponse = await fetch(imageUrl);
+            if (!imageResponse.ok) {
+              console.warn(`이미지를 불러올 수 없습니다: ${imageUrl}`);
+              continue;
+            }
+
+            const blob = await imageResponse.blob();
+            const dataUrl = await blobToDataURL(blob);
+
+            // Add to IndexedDB
+            await tileStore.addTile({
+              label: tileEntry.label,
+              originY: tileEntry.originY,
+              dataUrl: dataUrl,
+              displayScale: tileEntry.displayScale ?? 1,
+              gridWidth: tileEntry.gridWidth ?? 1,
+              gridHeight: tileEntry.gridHeight ?? 1,
+            });
+
+            importedCount++;
+          } catch (error) {
+            console.error(`타일 가져오기 실패 (${tileEntry.label}):`, error);
+          }
+        }
+
+        console.log(`가져오기 완료: ${importedCount}개 추가, ${skippedCount}개 건너뜀`);
+
+        if (importedCount === 0) {
+          throw new Error('가져온 타일이 없습니다');
+        }
+
+        // Refresh the palette display and load textures
+        await loadPaletteAndStart();
+        await registerMissingTextures();
+      }
+
       async function getTileBlob(tile) {
         if (tile.isCustom && tile.dataUrl) {
           return dataURLToBlob(tile.dataUrl);
@@ -1356,6 +1677,15 @@
         const response = await fetch(tile.runtimeUrl || tile.url);
         if (!response.ok) throw new Error(`파일을 읽을 수 없습니다: ${tile.url}`);
         return await response.blob();
+      }
+
+      function blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
       }
 
       async function resizePngBlob(file, targetWidth) {
@@ -1462,10 +1792,6 @@
         });
         await Promise.all(promises);
         console.log("All textures registered");
-        const activeScene = game.scene.getAt(0);
-        if (activeScene) {
-          refreshSceneView(activeScene);
-        }
       }
 
       async function fetchAsDataURL(url) {
@@ -1483,7 +1809,7 @@
         const skipBtn = document.getElementById("calibration-skip");
         const resetBtn = document.getElementById("calibration-reset");
         const ctx = canvas.getContext("2d");
-        const ORDER = ["상단", "오른쪽", "하단", "왼쪽"];
+        const ORDER = ["하단", "왼쪽", "오른쪽", "상단"];
 
         let resolveFn = null;
         let image = null;
@@ -1526,11 +1852,12 @@
         confirmBtn.addEventListener("click", async () => {
           if (!image || points.length < 4) return;
           try {
+            // 새로운 순서: 하단(0), 왼쪽(1), 오른쪽(2), 상단(3)
             const ordered = {
-              top: points[0],
-              right: points[1],
-              bottom: points[2],
-              left: points[3],
+              top: points[3],
+              right: points[2],
+              bottom: points[0],
+              left: points[1],
             };
 
             // 격자 크기에 따라 마름모 크기 조정
@@ -1607,9 +1934,57 @@
           ctx.drawImage(image, 0, 0);
           ctx.restore();
 
+          // 상단 점 가이드 표시 (하단, 왼쪽, 오른쪽을 모두 찍은 경우)
+          if (points.length === 3) {
+            // points[0] = 하단, points[1] = 왼쪽, points[2] = 오른쪽
+            const bottom = points[0];
+            const left = points[1];
+            const right = points[2];
+
+            // 좌우 중심점 계산
+            const centerX = (left.canvasX + right.canvasX) / 2;
+            const centerY = (left.canvasY + right.canvasY) / 2;
+
+            // 하단에서 중심까지의 벡터
+            const dx = centerX - bottom.canvasX;
+            const dy = centerY - bottom.canvasY;
+
+            // 상단 점은 중심에서 같은 거리만큼 반대 방향
+            const topX = centerX + dx;
+            const topY = centerY + dy;
+
+            // 가이드 십자선 그리기
+            ctx.save();
+            ctx.strokeStyle = "rgba(0, 255, 0, 0.7)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+
+            // 수평선
+            ctx.beginPath();
+            ctx.moveTo(topX - 20, topY);
+            ctx.lineTo(topX + 20, topY);
+            ctx.stroke();
+
+            // 수직선
+            ctx.beginPath();
+            ctx.moveTo(topX, topY - 20);
+            ctx.lineTo(topX, topY + 20);
+            ctx.stroke();
+
+            // 중심 점
+            ctx.fillStyle = "rgba(0, 255, 0, 0.7)";
+            ctx.beginPath();
+            ctx.arc(topX, topY, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+          }
+
+          // 사용자가 클릭한 점들 표시
           ctx.fillStyle = "#ffbd4a";
           ctx.strokeStyle = "#ffbd4a";
           ctx.lineWidth = 2;
+          ctx.setLineDash([]); // 점선 해제
           if (points.length) {
             ctx.beginPath();
             points.forEach((p, index) => {
@@ -1960,6 +2335,23 @@
             return await new Promise((resolve, reject) => {
               const request = store.getAll();
               request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+          },
+          async clearAll() {
+            const db = await dbPromise;
+            // Clear tiles
+            const tilesTx = db.transaction(STORE, "readwrite");
+            await new Promise((resolve, reject) => {
+              const request = tilesTx.objectStore(STORE).clear();
+              request.onsuccess = () => resolve();
+              request.onerror = () => reject(request.error);
+            });
+            // Clear placements
+            const placementsTx = db.transaction(PLACEMENTS_STORE, "readwrite");
+            await new Promise((resolve, reject) => {
+              const request = placementsTx.objectStore(PLACEMENTS_STORE).clear();
+              request.onsuccess = () => resolve();
               request.onerror = () => reject(request.error);
             });
           },
