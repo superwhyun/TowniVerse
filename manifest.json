@@ -1,0 +1,64 @@
+{
+  "tiles": [
+    {
+      "key": "custom-mi7jnkwb-5n70",
+      "label": "korea-80-house",
+      "originY": 0.624633431085044,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jnkwb-5n70.png"
+    },
+    {
+      "key": "custom-mi7jolwq-qpzj",
+      "label": "Gemini_Generated_Image_cdhs17cdhs17cdhs-removebg-preview",
+      "originY": 0.627906976744186,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jolwq-qpzj.png"
+    },
+    {
+      "key": "custom-mi7jpn7g-va6e",
+      "label": "image",
+      "originY": 0.6709511568123393,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jpn7g-va6e.png"
+    },
+    {
+      "key": "custom-mi7jqb58-i9mo",
+      "label": "Gemini_Generated_Image_av18ghav18ghav18-removebg-preview",
+      "originY": 0.5460992907801419,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jqb58-i9mo.png"
+    },
+    {
+      "key": "custom-mi7jt6vg-t4sh",
+      "label": "Gemini_Generated_Image_4p9cyq4p9cyq4p9c-removebg-preview",
+      "originY": 0.6559139784946236,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jt6vg-t4sh.png"
+    },
+    {
+      "key": "custom-mi7jume8-e0z7",
+      "label": "Gemini_Generated_Image_cf7aducf7aducf7a-removebg-preview",
+      "originY": 0.6414565826330533,
+      "scale": 1,
+      "displayScale": 0.5,
+      "gridWidth": 1,
+      "gridHeight": 1,
+      "file": "tiles/custom-mi7jume8-e0z7.png"
+    }
+  ]
+}
