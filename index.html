@@ -767,16 +767,50 @@
         });
 
         this.cursors = this.input.keyboard.createCursorKeys();
+
+        // 마우스 휠로 줌 인/아웃
         this.input.on("wheel", (pointer, gameObjects, deltaX, deltaY, deltaZ, event) => {
           const cam = this.cameras.main;
-          cam.scrollX += deltaX * WHEEL_SCROLL_FACTOR;
-          cam.scrollY += deltaY * WHEEL_SCROLL_FACTOR;
+          const zoomAmount = deltaY > 0 ? -0.02 : 0.02; // 민감도 낮춤: 위로 스크롤 = 확대, 아래로 = 축소
+          const newZoom = Phaser.Math.Clamp(cam.zoom + zoomAmount, 0.3, 3);
+          cam.setZoom(newZoom);
           refreshSceneView(this);
           updateDepths(cam);
           event?.preventDefault();
         });
 
+        // 좌클릭 드래그로 화면 이동
+        this.isDragging = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+
+        this.input.on("pointerdown", (pointer) => {
+          if (pointer.leftButtonDown()) {
+            this.isDragging = true;
+            this.dragStartX = pointer.x;
+            this.dragStartY = pointer.y;
+          }
+        });
+
+        this.input.on("pointerup", (pointer) => {
+          this.isDragging = false;
+        });
+
         this.input.on("pointermove", (pointer) => {
+          if (this.isDragging) {
+            const cam = this.cameras.main;
+            const deltaX = (pointer.x - this.dragStartX) / cam.zoom;
+            const deltaY = (pointer.y - this.dragStartY) / cam.zoom;
+            cam.scrollX -= deltaX;
+            cam.scrollY -= deltaY;
+            this.dragStartX = pointer.x;
+            this.dragStartY = pointer.y;
+            refreshSceneView(this);
+            updateDepths(cam);
+            return; // 드래그 중에는 타일 프리뷰 표시 안함
+          }
+
+          // 타일 프리뷰 표시 (드래그 중이 아닐 때만)
           if (!activeTileKey) {
             this.previewGraphics.clear();
             return;
@@ -824,14 +858,104 @@
           }
         });
 
+        this.clickStartTime = 0;
+        this.clickStartPos = { x: 0, y: 0 };
+
         this.input.on("pointerdown", async (pointer) => {
+          // 좌클릭 시작 시간과 위치 기록 (클릭 vs 드래그 구분용)
+          if (pointer.leftButtonDown()) {
+            this.clickStartTime = Date.now();
+            this.clickStartPos = { x: pointer.x, y: pointer.y };
+          }
+        });
+
+        this.input.on("pointerup", async (pointer) => {
           const worldPoint = pointer.positionToCamera(this.cameras.main);
           const gridPoint = screenToGrid(worldPoint.x, worldPoint.y);
 
-          if (!gridPoint) return;
+          // 좌클릭 종료 시: 드래그가 아닌 클릭이었다면 타일 배치/삭제 처리
+          if (pointer.leftButtonReleased()) {
+            const clickDuration = Date.now() - this.clickStartTime;
+            const distance = Phaser.Math.Distance.Between(
+              this.clickStartPos.x, this.clickStartPos.y,
+              pointer.x, pointer.y
+            );
 
-          // 우클릭 (button === 2): 타일 삭제
-          if (pointer.rightButtonDown()) {
+            // 200ms 이내이고 5픽셀 이내 이동이면 클릭으로 간주
+            if (clickDuration < 200 && distance < 5 && gridPoint) {
+              // 타일 배치/토글
+              if (!activeTileKey) return;
+
+              const tileDef = tileDefinitions.get(activeTileKey);
+              if (!tileDef) return;
+
+              const gridWidth = tileDef.gridWidth || 1;
+              const gridHeight = tileDef.gridHeight || 1;
+              const { baseCol, baseRow } = getPlacementBase(
+                gridPoint.col,
+                gridPoint.row,
+                gridWidth,
+                gridHeight
+              );
+              const baseKey = `${baseCol}-${baseRow}`;
+
+              // 클릭한 위치가 같은 타일인지 확인 (토글 삭제)
+              const existing = placedTiles.get(baseKey);
+              if (existing && existing.tileKey === activeTileKey && existing.isBase) {
+                // 타일 제거: 모든 연결된 격자 제거
+                const gw = existing.gridWidth || 1;
+                const gh = existing.gridHeight || 1;
+                for (let r = 0; r < gh; r++) {
+                  for (let c = 0; c < gw; c++) {
+                    const key = `${baseCol + c}-${baseRow + r}`;
+                    placedTiles.delete(key);
+                    await tileStore.deletePlacement(key);
+                  }
+                }
+                // 스프라이트 제거 (기준점에만 있음)
+                const sprite = spriteCache.get(baseKey);
+                if (sprite) {
+                  sprite.destroy();
+                  spriteCache.delete(baseKey);
+                }
+                refreshSceneView(this);
+                return;
+              }
+
+              // 충돌 체크: 배치하려는 모든 격자가 비어있는지 확인
+              for (let r = 0; r < gridHeight; r++) {
+                for (let c = 0; c < gridWidth; c++) {
+                  const key = `${baseCol + c}-${baseRow + r}`;
+                  if (placedTiles.has(key)) {
+                    console.log("충돌: 이미 타일이 배치되어 있습니다.");
+                    return; // 충돌 발생, 배치 취소
+                  }
+                }
+              }
+
+              // 타일 배치: 모든 격자에 점유 정보 저장
+              for (let r = 0; r < gridHeight; r++) {
+                for (let c = 0; c < gridWidth; c++) {
+                  const key = `${baseCol + c}-${baseRow + r}`;
+                  placedTiles.set(key, {
+                    tileKey: activeTileKey,
+                    grid: { col: baseCol + c, row: baseRow + r },
+                    isBase: r === 0 && c === 0, // 좌측 상단이 기준점
+                    baseCol,
+                    baseRow,
+                    gridWidth,
+                    gridHeight,
+                  });
+                  await tileStore.savePlacement(key, activeTileKey, baseCol + c, baseRow + r);
+                }
+              }
+
+              refreshSceneView(this);
+            }
+          }
+
+          // 우클릭: 타일 삭제
+          if (pointer.rightButtonReleased() && gridPoint) {
             const clickedKey = `${gridPoint.col}-${gridPoint.row}`;
             const clickedTile = placedTiles.get(clickedKey);
 
@@ -863,78 +987,7 @@
                 refreshSceneView(this);
               }
             }
-            return;
           }
-
-          // 좌클릭: 타일 배치/토글
-          if (!activeTileKey) return;
-
-          const tileDef = tileDefinitions.get(activeTileKey);
-          if (!tileDef) return;
-
-          const gridWidth = tileDef.gridWidth || 1;
-          const gridHeight = tileDef.gridHeight || 1;
-          const { baseCol, baseRow } = getPlacementBase(
-            gridPoint.col,
-            gridPoint.row,
-            gridWidth,
-            gridHeight
-          );
-          const baseKey = `${baseCol}-${baseRow}`;
-
-          // 클릭한 위치가 같은 타일인지 확인 (토글 삭제)
-          const existing = placedTiles.get(baseKey);
-          if (existing && existing.tileKey === activeTileKey &&
-              existing.isBase) {
-            // 타일 제거: 모든 연결된 격자 제거
-            const gw = existing.gridWidth || 1;
-            const gh = existing.gridHeight || 1;
-            for (let r = 0; r < gh; r++) {
-              for (let c = 0; c < gw; c++) {
-                const key = `${baseCol + c}-${baseRow + r}`;
-                placedTiles.delete(key);
-                await tileStore.deletePlacement(key);
-              }
-            }
-            // 스프라이트 제거 (기준점에만 있음)
-            const sprite = spriteCache.get(baseKey);
-            if (sprite) {
-              sprite.destroy();
-              spriteCache.delete(baseKey);
-            }
-            refreshSceneView(this);
-            return;
-          }
-
-          // 충돌 체크: 배치하려는 모든 격자가 비어있는지 확인
-          for (let r = 0; r < gridHeight; r++) {
-            for (let c = 0; c < gridWidth; c++) {
-              const key = `${baseCol + c}-${baseRow + r}`;
-              if (placedTiles.has(key)) {
-                console.log("충돌: 이미 타일이 배치되어 있습니다.");
-                return; // 충돌 발생, 배치 취소
-              }
-            }
-          }
-
-          // 타일 배치: 모든 격자에 점유 정보 저장
-          for (let r = 0; r < gridHeight; r++) {
-            for (let c = 0; c < gridWidth; c++) {
-              const key = `${baseCol + c}-${baseRow + r}`;
-              placedTiles.set(key, {
-                tileKey: activeTileKey,
-                grid: { col: baseCol + c, row: baseRow + r },
-                isBase: r === 0 && c === 0, // 좌측 상단이 기준점
-                baseCol,
-                baseRow,
-                gridWidth,
-                gridHeight,
-              });
-              await tileStore.savePlacement(key, activeTileKey, baseCol + c, baseRow + r);
-            }
-          }
-
-          refreshSceneView(this);
         });
 
         // 우클릭 컨텍스트 메뉴 방지
