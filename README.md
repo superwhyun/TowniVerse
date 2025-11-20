@@ -7,6 +7,7 @@ An isometric tile-based landscape builder powered by Phaser 3. Create and manage
 ### Tile Management
 - **Custom Tile Upload**: Upload any image and convert it to an isometric tile
 - **4-Point Calibration**: Mark 4 corner points on your image to precisely map it to the diamond-shaped grid
+- **WebGL Acceleration**: Uses WebGL shaders for fast image processing and transformation
 - **Automatic Perspective Transform**: Uses homography-based transformation to convert arbitrary quadrilaterals to perfect 256×128 diamond tiles
 - **Dynamic Origin Calculation**: Automatically calculates the correct origin point for proper grid alignment
 - **Tile Export/Import**: Export your custom tile collection as a ZIP file and import it later
@@ -21,20 +22,23 @@ An isometric tile-based landscape builder powered by Phaser 3. Create and manage
 
 ### Data Persistence
 - **IndexedDB Storage**: All custom tiles and placements are saved locally in your browser
+- **Optimized Storage**: Uses bulk transactions for better performance
 - **Auto-save**: Tile placements are automatically saved as you build
 - **Persistent State**: Your world remains intact across page reloads
 
 ## Technical Stack
 
 - **Phaser 3**: Game engine for rendering and interaction
+- **ES Modules**: Modern JavaScript module system for better code organization
+- **WebGL**: GPU-accelerated image processing
 - **IndexedDB**: Browser-based storage for tiles and placements
 - **JSZip**: ZIP file creation for tile export
 - **Perspective Transform**: Custom homography implementation for image transformation
-- **Gaussian Elimination**: Linear algebra solver for perspective calculations
 
 ## Getting Started
 
-1. Open `index.html` in a modern web browser
+1. Open `index.html` in a modern web browser (Must be served via a local server due to ES Modules CORS policy)
+   - You can use `npx serve` or `python -m http.server`
 2. Select a tile from the palette on the right
 3. Click on the grid to place tiles
 4. Use mouse wheel to zoom, click and drag to pan
@@ -53,52 +57,24 @@ An isometric tile-based landscape builder powered by Phaser 3. Create and manage
 6. Click "타일 등록" (Register Tile)
 7. Your tile will appear in the palette and can be immediately placed on the grid
 
-## Tile Specifications
-
-- **Output Size**: 256×128 pixels (diamond shape)
-- **Format**: PNG with transparency
-- **Coordinate System**: Isometric (diamond-oriented)
-- **Origin Point**: Automatically calculated to align with grid center
-
 ## File Structure
 
 ```
 TowniVerse/
 ├── index.html          # Main application file
+├── js/                 # Application logic
+│   ├── main.js         # Entry point
+│   ├── state.js        # Global state management
+│   ├── store.js        # IndexedDB storage
+│   ├── scene.js        # Phaser scene & rendering
+│   ├── tile-manager.js # Tile logic & upload
+│   ├── calibrator.js   # Image processing (WebGL)
+│   ├── ui.js           # UI interactions
+│   ├── grid.js         # Grid math utilities
+│   └── constants.js    # Configuration
 ├── tiles/              # Tile assets directory
-│   ├── manifest.json   # Tile definitions
-│   └── *.svg, *.png    # Tile image files
 └── README.md           # This file
 ```
-
-## Exporting and Importing Tiles
-
-### Export
-1. Click "타일 내보내기" (Export Tiles) button
-2. A ZIP file containing all your custom tiles will be downloaded
-3. The ZIP includes both the images and metadata
-
-### Import
-1. Click "타일 가져오기" (Import Tiles) button
-2. Select a previously exported ZIP file
-3. All tiles from the ZIP will be added to your palette
-
-## Controls
-
-- **Left Click**: Place/remove tile
-- **Mouse Wheel**: Zoom in/out
-- **Click + Drag**: Pan the view
-- **Tile Selection**: Click on a tile in the right palette to select it
-
-## Browser Compatibility
-
-Requires a modern browser with support for:
-- ES6+ JavaScript
-- IndexedDB
-- HTML5 Canvas
-- FileReader API
-
-Tested on Chrome, Firefox, and Safari.
 
 ## License
 
