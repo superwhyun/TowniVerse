@@ -271,43 +271,75 @@ export function setupImportButton() {
     const listContainer = document.getElementById("tileset-list");
     if (listContainer) {
       listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">목록 불러오는 중...</div>';
-      fetch('tilesets/')
+      fetch('tilesets/?t=' + Date.now())
         .then(res => res.text())
         .then(html => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, 'text/html');
           const links = Array.from(doc.querySelectorAll('a'));
 
-          // zip 파일만 필터링
-          const tilesets = links
+          const allFiles = links
             .map(link => link.getAttribute('href'))
-            .filter(href => href && href.toLowerCase().endsWith('.zip'))
+            .filter(Boolean)
             .map(href => {
-              // href가 전체 경로일 수도 있고 파일명일 수도 있음
-              const fileName = href.split('/').pop();
-              const name = fileName.replace('.zip', '');
-              return {
-                name: name,
-                file: fileName,
-                description: fileName // 설명은 파일명으로 대체
-              };
-            });
+              // URL 디코딩 및 파일명만 추출 (./gundams.png -> gundams.png)
+              try {
+                return decodeURIComponent(href).split('/').pop();
+              } catch (e) {
+                return href.split('/').pop();
+              }
+            })
+            .filter(f => f && f !== '..' && f !== '.'); // 상위/현재 디렉토리 제외
+
+          const zipFiles = allFiles.filter(f => f.toLowerCase().endsWith('.zip'));
+          const imageFiles = new Set(allFiles.filter(f => /\.(png|jpg|jpeg)$/i.test(f)));
+
+          const tilesets = zipFiles.map(zipFile => {
+            const fileName = zipFile;
+            const name = fileName.replace(/\.zip$/i, '');
+
+            // 이미지 찾기: 같은 이름의 png, jpg, jpeg
+            let imageFile = null;
+            if (imageFiles.has(name + '.png')) imageFile = name + '.png';
+            else if (imageFiles.has(name + '.jpg')) imageFile = name + '.jpg';
+            else if (imageFiles.has(name + '.jpeg')) imageFile = name + '.jpeg';
+
+            return {
+              name: name,
+              file: fileName,
+              image: imageFile
+            };
+          });
 
           listContainer.innerHTML = '';
           if (tilesets.length > 0) {
             tilesets.forEach(ts => {
               const item = document.createElement('div');
               item.style.cssText = `
-                padding: 0.5rem;
+                display: flex;
+                align-items: center;
+                gap: 0.8rem;
+                padding: 0.6rem;
                 background: rgba(255,255,255,0.05);
                 border: 1px solid rgba(255,255,255,0.1);
                 border-radius: 8px;
                 cursor: pointer;
                 transition: all 0.2s;
               `;
+
+              let imageHtml = '';
+              if (ts.image) {
+                imageHtml = `<img src="tilesets/${ts.image}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: rgba(0,0,0,0.2);" />`;
+              } else {
+                imageHtml = `<div style="width: 48px; height: 48px; border-radius: 4px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📦</div>`;
+              }
+
               item.innerHTML = `
-                <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.1rem;">${ts.name}</div>
-                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">${ts.file}</div>
+                ${imageHtml}
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ts.name}</div>
+                  <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ts.file}</div>
+                </div>
               `;
               item.onmouseover = () => {
                 item.style.background = 'rgba(255,255,255,0.1)';
