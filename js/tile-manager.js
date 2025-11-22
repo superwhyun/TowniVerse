@@ -566,7 +566,7 @@ async function exportProject() {
 
   // Smart export: export only custom tiles that are currently placed
   const placedTiles = getState('placedTiles');
-  const placedTileKeys = new Set(placedTiles.map(t => t.tileKey));
+  const placedTileKeys = new Set(Array.from(placedTiles.values()).map(t => t.tileKey));
 
   const allStoredTiles = await tileStore.getTiles(); // Get all custom tiles from store
 
