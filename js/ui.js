@@ -58,7 +58,9 @@ export function renderPalette() {
     sizeLabel.className = "tile-size";
     const gridWidth = tile.gridWidth || 1;
     const gridHeight = tile.gridHeight || 1;
-    sizeLabel.textContent = `${gridWidth}x${gridHeight}`;
+    const size = gridWidth; // 1x1 -> "1", 2x2 -> "2"
+    sizeLabel.textContent = size.toString();
+    sizeLabel.dataset.size = size.toString();
     button.appendChild(sizeLabel);
 
     if (tile.isCustom) {

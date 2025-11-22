@@ -199,7 +199,11 @@ export function createCalibrator() {
       currentGridWidth = gridWidth;
       currentGridHeight = gridHeight;
       const dataUrl = await blobToDataURL(file);
-      image = await loadImageElement(dataUrl);
+      const originalImage = await loadImageElement(dataUrl);
+
+      // 흰색 배경을 투명하게 변환
+      image = await removeWhiteBackground(originalImage);
+
       points = [];
       syncCanvasSize();
       drawOverlay();
@@ -440,11 +444,12 @@ async function warpImageWithPerspective(image, srcPts, dstPts, outputWidth, outp
     resultCanvas.height = outputHeight;
     const ctx = resultCanvas.getContext('2d');
 
-    // drawImage로 WebGL 캔버스의 일부분만 가져오기
-    // WebGL 캔버스의 Y축이 뒤집혀 나올 수 있으므로 확인 필요.
-    // 일반적인 경우 drawImage(glCanvas, ...)는 잘 동작함.
-
+    // WebGL의 Y축은 아래에서 위로 향하므로, 이미지를 Y축 기준으로 뒤집어야 함
+    ctx.save();
+    ctx.translate(0, outputHeight);
+    ctx.scale(1, -1);
     ctx.drawImage(glCanvas, 0, 0, outputWidth, outputHeight, 0, 0, outputWidth, outputHeight);
+    ctx.restore();
 
     return await new Promise((resolve) => {
       resultCanvas.toBlob(resolve, "image/png");
@@ -606,4 +611,38 @@ export function blobToDataURL(blob) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * 이미지의 흰색 배경을 투명하게 변환
+ */
+async function removeWhiteBackground(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(image, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  // 흰색 임계값 (RGB 모두 240 이상이면 흰색으로 간주)
+  const whiteThreshold = 240;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+
+    // 흰색에 가까운 픽셀을 투명하게 변환
+    if (r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold) {
+      data[i + 3] = 0; // 알파값을 0으로 설정 (투명)
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+
+  // 변환된 이미지를 새로운 Image 객체로 반환
+  const dataUrl = canvas.toDataURL('image/png');
+  return await loadImageElement(dataUrl);
 }
