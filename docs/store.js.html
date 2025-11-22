@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: store.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: store.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * IndexedDB를 사용한 타일 및 배치 데이터 저장소
+ */
+
+const DB_NAME = "TowniVerseLocal";
+const DB_VERSION = 2;
+const TILES_STORE = "tiles";
+const PLACEMENTS_STORE = "placements";
+
+/**
+ * Creates and returns the tile store interface.
+ * @returns {Object} The tile store interface
+ */
+export function createTileStore() {
+  // DB 연결 프로미스
+  const dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = request.result;
+
+      // 타일 저장소
+      if (!db.objectStoreNames.contains(TILES_STORE)) {
+        db.createObjectStore(TILES_STORE, { keyPath: "id", autoIncrement: true });
+      }
+
+      // 배치 저장소
+      if (!db.objectStoreNames.contains(PLACEMENTS_STORE)) {
+        db.createObjectStore(PLACEMENTS_STORE, { keyPath: "key" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+  /**
+   * 트랜잭션 헬퍼
+   * @param {string} storeName 
+   * @param {IDBTransactionMode} mode 
+   */
+  async function tx(storeName, mode) {
+    const db = await dbPromise;
+    return db.transaction(storeName, mode).objectStore(storeName);
+  }
+
+  return {
+    /**
+     * 모든 타일 가져오기
+     * @returns {Promise&lt;Array>} List of tiles
+     */
+    async getTiles() {
+      const store = await tx(TILES_STORE, "readonly");
+      return await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const tiles = request.result
+            .map((entry) => ({
+              key: entry.key,
+              label: entry.label,
+              originY: entry.originY,
+              displayScale: entry.displayScale ?? 1,
+              gridWidth: entry.gridWidth ?? 1,
+              gridHeight: entry.gridHeight ?? 1,
+              dataUrl: entry.dataUrl,
+              isCustom: true,
+              createdAt: entry.createdAt || 0,
+              id: entry.id,
+            }))
+            .sort((a, b) => (a.id || 0) - (b.id || 0));
+          resolve(tiles);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    },
+
+    /**
+     * 새 타일 추가 (자동 키 생성)
+     * @param {Object} tileData
+     * @returns {Promise&lt;Object>} The added tile
+     */
+    async addTile({ label, originY, dataUrl, displayScale = 1, gridWidth = 1, gridHeight = 1 }) {
+      const key = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const entry = {
+        key,
+        label,
+        originY,
+        dataUrl,
+        displayScale,
+        gridWidth,
+        gridHeight,
+        createdAt: Date.now(),
+      };
+
+      const store = await tx(TILES_STORE, "readwrite");
+      await new Promise((resolve, reject) => {
+        const request = store.add(entry);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+
+      return { ...entry, isCustom: true };
+    },
+
+    /**
+     * 타일 추가 (키 지정)
+     * @param {Object} tileData
+     * @returns {Promise&lt;Object>} The added tile
+     */
+    async addTileWithKey({ key, label, originY, dataUrl, displayScale = 1, gridWidth = 1, gridHeight = 1 }) {
+      const entry = {
+        key,
+        label,
+        originY,
+        dataUrl,
+        displayScale,
+        gridWidth,
+        gridHeight,
+        createdAt: Date.now(),
+      };
+
+      const store = await tx(TILES_STORE, "readwrite");
+      await new Promise((resolve, reject) => {
+        const request = store.add(entry);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+
+      return { ...entry, isCustom: true };
+    },
+
+    /**
+     * 타일 삭제
+     * @param {string} key - Tile key
+     */
+    async deleteTile(key) {
+      const store = await tx(TILES_STORE, "readwrite");
+      await new Promise((resolve, reject) => {
+        const request = store.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return resolve();
+          if (cursor.value.key === key) {
+            cursor.delete();
+            resolve();
+          } else {
+            cursor.continue();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    },
+
+    /**
+     * 단일 배치 저장
+     * @param {string} key - Placement key (col-row)
+     * @param {string} tileKey - Tile key
+     * @param {number} col 
+     * @param {number} row 
+     */
+    async savePlacement(key, tileKey, col, row) {
+      const db = await dbPromise;
+      const store = db.transaction(PLACEMENTS_STORE, "readwrite").objectStore(PLACEMENTS_STORE);
+      await new Promise((resolve, reject) => {
+        const request = store.put({ key, tileKey, col, row });
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    },
+
+    /**
+     * 여러 배치 일괄 저장 (트랜잭션 최적화)
+     * @param {Array&lt;{key: string, tileKey: string, col: number, row: number}>} placements 
+     */
+    async savePlacements(placements) {
+      const db = await dbPromise;
+      const transaction = db.transaction(PLACEMENTS_STORE, "readwrite");
+      const store = transaction.objectStore(PLACEMENTS_STORE);
+
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+
+        placements.forEach(({ key, tileKey, col, row }) => {
+          store.put({ key, tileKey, col, row });
+        });
+      });
+    },
+
+    /**
+     * 단일 배치 삭제
+     * @param {string} key 
+     */
+    async deletePlacement(key) {
+      const db = await dbPromise;
+      const store = db.transaction(PLACEMENTS_STORE, "readwrite").objectStore(PLACEMENTS_STORE);
+      await new Promise((resolve, reject) => {
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    },
+
+    /**
+     * 여러 배치 일괄 삭제 (트랜잭션 최적화)
+     * @param {string[]} keys 
+     */
+    async deletePlacements(keys) {
+      const db = await dbPromise;
+      const transaction = db.transaction(PLACEMENTS_STORE, "readwrite");
+      const store = transaction.objectStore(PLACEMENTS_STORE);
+
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+
+        keys.forEach(key => {
+          store.delete(key);
+        });
+      });
+    },
+
+    /**
+     * 모든 배치 가져오기
+     * @returns {Promise&lt;Array>}
+     */
+    async getPlacements() {
+      const db = await dbPromise;
+      const store = db.transaction(PLACEMENTS_STORE, "readonly").objectStore(PLACEMENTS_STORE);
+      return await new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    },
+
+    /**
+     * 모든 데이터 삭제
+     */
+    async clearAll() {
+      const db = await dbPromise;
+
+      // 타일 삭제
+      const tilesTx = db.transaction(TILES_STORE, "readwrite");
+      await new Promise((resolve, reject) => {
+        const request = tilesTx.objectStore(TILES_STORE).clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+
+      // 배치 삭제
+      const placementsTx = db.transaction(PLACEMENTS_STORE, "readwrite");
+      await new Promise((resolve, reject) => {
+        const request = placementsTx.objectStore(PLACEMENTS_STORE).clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    },
+  };
+}
+
+export const tileStore = createTileStore();
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#Calibrator">Calibrator</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#GRID_BUFFER">GRID_BUFFER</a></li><li><a href="global.html#TILES_PER_PAGE">TILES_PER_PAGE</a></li><li><a href="global.html#TILE_HEIGHT">TILE_HEIGHT</a></li><li><a href="global.html#TILE_WIDTH">TILE_WIDTH</a></li><li><a href="global.html#WHEEL_SCROLL_FACTOR">WHEEL_SCROLL_FACTOR</a></li><li><a href="global.html#WORLD_BOUNDS">WORLD_BOUNDS</a></li><li><a href="global.html#addTile">addTile</a></li><li><a href="global.html#addTileWithKey">addTileWithKey</a></li><li><a href="global.html#blobToDataURL">blobToDataURL</a></li><li><a href="global.html#clearAll">clearAll</a></li><li><a href="global.html#createCalibrator">createCalibrator</a></li><li><a href="global.html#createScene">createScene</a></li><li><a href="global.html#createTileStore">createTileStore</a></li><li><a href="global.html#deleteCustomTile">deleteCustomTile</a></li><li><a href="global.html#deletePlacement">deletePlacement</a></li><li><a href="global.html#deletePlacements">deletePlacements</a></li><li><a href="global.html#deleteTile">deleteTile</a></li><li><a href="global.html#diamondPoints">diamondPoints</a></li><li><a href="global.html#diamondPointsScaled">diamondPointsScaled</a></li><li><a href="global.html#drawWireGrid">drawWireGrid</a></li><li><a href="global.html#filterAndRenderPalette">filterAndRenderPalette</a></li><li><a href="global.html#filterPalette">filterPalette</a></li><li><a href="global.html#getPlacementBase">getPlacementBase</a></li><li><a href="global.html#getPlacements">getPlacements</a></li><li><a href="global.html#getState">getState</a></li><li><a href="global.html#getTiles">getTiles</a></li><li><a href="global.html#getVisibleBounds">getVisibleBounds</a></li><li><a href="global.html#gridOrigin">gridOrigin</a></li><li><a href="global.html#gridToScreen">gridToScreen</a></li><li><a href="global.html#init">init</a></li><li><a href="global.html#isWithinBounds">isWithinBounds</a></li><li><a href="global.html#loadImageElement">loadImageElement</a></li><li><a href="global.html#loadSavedPlacements">loadSavedPlacements</a></li><li><a href="global.html#preloadScene">preloadScene</a></li><li><a href="global.html#refreshSceneView">refreshSceneView</a></li><li><a href="global.html#renderPalette">renderPalette</a></li><li><a href="global.html#savePlacement">savePlacement</a></li><li><a href="global.html#savePlacements">savePlacements</a></li><li><a href="global.html#screenToGrid">screenToGrid</a></li><li><a href="global.html#screenToGridFloat">screenToGridFloat</a></li><li><a href="global.html#setActiveTile">setActiveTile</a></li><li><a href="global.html#setState">setState</a></li><li><a href="global.html#setupGridSizeToggle">setupGridSizeToggle</a></li><li><a href="global.html#setupPalette">setupPalette</a></li><li><a href="global.html#setupSearch">setupSearch</a></li><li><a href="global.html#startGame">startGame</a></li><li><a href="global.html#syncVisibleTiles">syncVisibleTiles</a></li><li><a href="global.html#updateDepths">updateDepths</a></li><li><a href="global.html#updatePaginationButtons">updatePaginationButtons</a></li><li><a href="global.html#updateScene">updateScene</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Fri Nov 21 2025 23:40:45 GMT+0900 (Korean Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

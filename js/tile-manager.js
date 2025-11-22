@@ -260,14 +260,84 @@ export function setupImportButton() {
   const urlInput = document.getElementById("import-url-input");
   const confirmBtn = document.getElementById("import-confirm");
   const cancelBtn = document.getElementById("import-cancel");
+  const mergeCheckbox = document.getElementById("import-merge");
 
   importButton.addEventListener("click", () => {
     const baseUrl = `${window.location.protocol}//${window.location.host}/tilesets/`;
     urlInput.value = baseUrl;
     modal.classList.add("visible");
+
+    // 타일셋 목록 불러오기 (디렉토리 파싱)
+    const listContainer = document.getElementById("tileset-list");
+    if (listContainer) {
+      listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">목록 불러오는 중...</div>';
+      fetch('tilesets/')
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const links = Array.from(doc.querySelectorAll('a'));
+
+          // zip 파일만 필터링
+          const tilesets = links
+            .map(link => link.getAttribute('href'))
+            .filter(href => href && href.toLowerCase().endsWith('.zip'))
+            .map(href => {
+              // href가 전체 경로일 수도 있고 파일명일 수도 있음
+              const fileName = href.split('/').pop();
+              const name = fileName.replace('.zip', '');
+              return {
+                name: name,
+                file: fileName,
+                description: fileName // 설명은 파일명으로 대체
+              };
+            });
+
+          listContainer.innerHTML = '';
+          if (tilesets.length > 0) {
+            tilesets.forEach(ts => {
+              const item = document.createElement('div');
+              item.style.cssText = `
+                padding: 0.5rem;
+                background: rgba(255,255,255,0.05);
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+              `;
+              item.innerHTML = `
+                <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.1rem;">${ts.name}</div>
+                <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6);">${ts.file}</div>
+              `;
+              item.onmouseover = () => {
+                item.style.background = 'rgba(255,255,255,0.1)';
+                item.style.borderColor = 'rgba(255,255,255,0.3)';
+              };
+              item.onmouseout = () => {
+                item.style.background = 'rgba(255,255,255,0.05)';
+                item.style.borderColor = 'rgba(255,255,255,0.1)';
+              };
+              item.onclick = () => {
+                urlInput.value = `${baseUrl}${ts.file}`;
+                // 시각적 피드백
+                Array.from(listContainer.children).forEach(c => c.style.borderColor = 'rgba(255,255,255,0.1)');
+                item.style.borderColor = '#ffe29a';
+              };
+              listContainer.appendChild(item);
+            });
+          } else {
+            listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">사용 가능한 타일셋이 없습니다.</div>';
+          }
+        })
+        .catch(err => {
+          console.error('타일셋 목록 로드 실패:', err);
+          listContainer.innerHTML = '<div style="color: #ff7171; font-size: 0.85rem;">목록을 불러올 수 없습니다.</div>';
+        });
+    }
+
     setTimeout(() => {
       urlInput.focus();
-      urlInput.setSelectionRange(urlInput.value.length, urlInput.value.length);
+      // urlInput.setSelectionRange(urlInput.value.length, urlInput.value.length);
     }, 100);
   });
 
@@ -280,19 +350,24 @@ export function setupImportButton() {
     if (!url) return;
 
     modal.classList.remove("visible");
+    modal.classList.remove("visible");
 
     importButton.disabled = true;
     const originalText = importButton.textContent;
-    importButton.textContent = "가져오는 중...";
+    importButton.textContent = "추가하는 중...";
     try {
-      await clearAllData();
+      // 항상 병합 모드로 동작 (기존 데이터 삭제 안함)
+      // const shouldMerge = mergeCheckbox?.checked;
+      // if (!shouldMerge) {
+      //   await clearAllData();
+      // }
 
       if (url.toLowerCase().endsWith('.zip')) {
         await importFromZipUrl(url);
       } else {
         await importFromUrl(url);
       }
-      alert("타일을 성공적으로 가져왔습니다!");
+      alert("타일셋이 추가되었습니다!");
     } catch (error) {
       alert("가져오기 실패: " + error.message);
     } finally {
@@ -351,7 +426,7 @@ async function exportProject() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function importFromZipUrl(zipUrl) {
+export async function importFromZipUrl(zipUrl) {
   if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
 
   console.log('Fetching ZIP from:', zipUrl);
