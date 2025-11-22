@@ -3,7 +3,7 @@ import { state, setState, getState } from "./state.js";
 import { tileStore } from "./store.js";
 import { createCalibrator, loadImageElement, blobToDataURL } from "./calibrator.js";
 import { filterAndRenderPalette, setActiveTile } from "./ui.js";
-import { startGame, loadSavedPlacements } from "./scene.js";
+import { startGame, loadSavedPlacements, refreshSceneView } from "./scene.js";
 
 const calibrator = createCalibrator();
 
@@ -47,6 +47,7 @@ export async function loadManifestTiles() {
         displayScale: tile.displayScale ?? 1,
         gridWidth: tile.gridWidth ?? 1,
         gridHeight: tile.gridHeight ?? 1,
+        group: tile.group ?? '기본', // Add group from manifest, default to '기본'
       });
     }
 
@@ -60,37 +61,55 @@ export async function loadManifestTiles() {
 
 export async function loadPaletteAndStart() {
   const customTiles = await tileStore.getTiles();
+  console.log("DB에서 로드한 커스텀 타일:", customTiles.length, "개");
+
+  customTiles.forEach(tile => {
+    if (!tile.imageBlob && !tile.dataUrl) {
+      console.error("imageBlob과 dataUrl이 모두 비어있는 타일:", tile.key, tile.label);
+    }
+  });
+
   const runtimeUrls = getState('runtimeUrls');
   runtimeUrls.forEach((url) => URL.revokeObjectURL(url));
   runtimeUrls.clear();
 
   const builtInTiles = getState('builtInTiles');
-  const palette = [...builtInTiles, ...customTiles].filter(tile => {
+  const allTiles = [...builtInTiles, ...customTiles].filter(tile => {
     if (tile.isCustom) {
-      return tile.dataUrl && tile.dataUrl.length > 0;
+      return tile.imageBlob || (tile.dataUrl && tile.dataUrl.length > 0);
     } else {
       return tile.url || tile.file;
     }
   });
-  setState('palette', palette);
-  console.log("타일 로드 완료:", palette.length, "개");
+  setState('palette', allTiles); // Set allTiles to palette
+  console.log("타일 로드 완료:", allTiles.length, "개");
 
   const paletteContainer = document.getElementById("tile-palette");
-  if (paletteContainer && !palette.length) {
+  if (paletteContainer && !allTiles.length) {
     paletteContainer.textContent = "등록된 타일이 없습니다.";
     return;
   }
 
-  palette.forEach((tile) => {
+  allTiles.forEach((tile) => {
     tile.gridWidth = tile.gridWidth ?? 1;
     tile.gridHeight = tile.gridHeight ?? 1;
+    tile.group = tile.group ?? '기본'; // Ensure all tiles have a group
 
     if (tile.isCustom) {
-      tile.previewUrl = tile.dataUrl;
-      const blob = dataURLToBlob(tile.dataUrl);
-      const runtime = URL.createObjectURL(blob);
-      runtimeUrls.set(tile.key, runtime);
-      tile.runtimeUrl = runtime;
+      if (tile.imageBlob) {
+        // Use Blob directly
+        const runtime = URL.createObjectURL(tile.imageBlob);
+        tile.previewUrl = runtime;
+        tile.runtimeUrl = runtime;
+        runtimeUrls.set(tile.key, runtime);
+      } else if (tile.dataUrl) {
+        // Fallback to dataUrl for backward compatibility
+        tile.previewUrl = tile.dataUrl;
+        const blob = dataURLToBlob(tile.dataUrl);
+        const runtime = URL.createObjectURL(blob);
+        runtimeUrls.set(tile.key, runtime);
+        tile.runtimeUrl = runtime;
+      }
       tile.isSvg = false;
     } else {
       const url = tile.url || tile.file;
@@ -100,23 +119,138 @@ export async function loadPaletteAndStart() {
     }
   });
 
-  const tileDefinitions = new Map(palette.map((tile) => [tile.key, tile]));
+  const tileDefinitions = new Map(allTiles.map((tile) => [tile.key, tile]));
   setState('tileDefinitions', tileDefinitions);
 
   let activeTileKey = getState('activeTileKey');
   if (!activeTileKey || !tileDefinitions.has(activeTileKey)) {
-    activeTileKey = palette[0].key;
+    activeTileKey = allTiles[0]?.key; // Use optional chaining in case allTiles is empty
     setState('activeTileKey', activeTileKey);
   }
 
-  filterAndRenderPalette();
+  // Group-based tab management
+  const tabsContainer = document.getElementById('palette-tabs');
+  const actualPalette = document.getElementById('palette') || document.getElementById('tile-palette'); // Use 'palette' if it exists, fallback to 'tile-palette'
+
+  if (tabsContainer && actualPalette) {
+    const groups = [...new Set(allTiles.map(t => t.group || '기본'))];
+    // '기본'이 항상 처음에 오도록 정렬
+    groups.sort((a, b) => {
+      if (a === '기본') return -1;
+      if (b === '기본') return 1;
+      return a.localeCompare(b);
+    });
+
+    let activeGroup = getState('activeTileGroup') || groups[0];
+    if (!groups.includes(activeGroup)) {
+      activeGroup = groups[0];
+    }
+    setState('activeTileGroup', activeGroup);
+
+    const deleteGroup = async (groupToDelete) => {
+      if (!confirm(`'${groupToDelete}' 탭과 포함된 모든 타일을 삭제하시겠습니까?\n(배치된 타일도 함께 삭제됩니다)`)) {
+        return;
+      }
+
+      const tilesInGroup = allTiles.filter(t => t.group === groupToDelete);
+      const placedTiles = getState('placedTiles');
+      const spriteCache = getState('spriteCache');
+      const keysToDelete = [];
+
+      // Collect all placement keys to delete from DB
+      for (const tile of tilesInGroup) {
+        // Delete tile from store
+        await tileStore.deleteTile(tile.key);
+
+        // Remove all placements of this tile type
+        placedTiles.forEach((placement, key) => {
+          if (placement.tileKey === tile.key) {
+            keysToDelete.push(key);
+
+            // Remove sprite if this is a base tile
+            if (placement.isBase) {
+              const sprite = spriteCache.get(key);
+              if (sprite) {
+                sprite.destroy();
+                spriteCache.delete(key);
+              }
+            }
+
+            // Remove from placedTiles map
+            placedTiles.delete(key);
+          }
+        });
+      }
+
+      // Delete all placements from DB
+      if (keysToDelete.length > 0) {
+        await tileStore.deletePlacements(keysToDelete);
+      }
+
+      // Update palette and re-render
+      await loadPaletteAndStart();
+
+      // If the deleted group was active, switch to '기본' or first available
+      if (getState('activeTileGroup') === groupToDelete) {
+        const newGroups = [...new Set(getState('palette').map(t => t.group || '기본'))];
+        setState('activeTileGroup', newGroups[0] || '기본');
+      }
+
+      filterAndRenderPalette();
+
+      // Refresh scene to update the view
+      const game = getState('game');
+      if (game) {
+        const activeScene = game.scene.getAt(0);
+        if (activeScene) {
+          refreshSceneView(activeScene);
+        }
+      }
+    };
+
+    const renderTabs = () => {
+      tabsContainer.innerHTML = '';
+      groups.forEach(group => {
+        const tab = document.createElement('div');
+        tab.className = `palette-tab ${group === activeGroup ? 'active' : ''}`;
+        tab.textContent = group;
+        tab.onclick = () => {
+          activeGroup = group;
+          setState('activeTileGroup', activeGroup);
+          setState('currentPage', 0); // Reset page number when switching tabs
+          renderTabs();
+          filterAndRenderPalette(); // Re-render palette based on new active group
+        };
+
+        // '기본'이 아닌 탭에는 삭제 버튼 추가
+        if (group !== '기본') {
+          const closeBtn = document.createElement('div');
+          closeBtn.className = 'close-btn';
+          closeBtn.innerHTML = '×';
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteGroup(group);
+          };
+          tab.appendChild(closeBtn);
+        }
+
+        tabsContainer.appendChild(tab);
+      });
+    };
+
+    // Initial rendering
+    renderTabs();
+  }
 
   const game = getState('game');
   if (!game) {
-    startGame();
+    await startGame();
   } else {
     await registerMissingTextures();
   }
+
+  // Render palette after textures are loaded
+  filterAndRenderPalette();
 }
 
 export function setupUploader() {
@@ -124,6 +258,7 @@ export function setupUploader() {
   const fileInput = document.getElementById("file-input");
   const labelInput = document.getElementById("upload-label");
   const status = document.getElementById("upload-status");
+  const groupInput = document.getElementById("upload-group"); // New group input
 
   if (!dropZone || !fileInput) return;
 
@@ -168,6 +303,7 @@ export function setupUploader() {
       return;
     }
     const label = (labelInput?.value || file.name.replace(/\.png$/i, "")).trim();
+    const group = (groupInput?.value || '커스텀').trim(); // Get group from input, default to '커스텀'
     const gridWidth = getState('selectedGridSize');
     const gridHeight = gridWidth;
     status.textContent = "이미지 준비...";
@@ -195,8 +331,13 @@ export function setupUploader() {
         displayScale,
         gridWidth,
         gridHeight,
+        group, // Save the group
       });
       status.textContent = "업로드 완료! 팔레트를 갱신합니다.";
+
+      // Switch active group to the uploaded tile's group
+      setState('activeTileGroup', group);
+
       await loadPaletteAndStart();
 
       status.textContent = "텍스처 로딩 중...";
@@ -382,13 +523,12 @@ export function setupImportButton() {
     if (!url) return;
 
     modal.classList.remove("visible");
-    modal.classList.remove("visible");
 
     importButton.disabled = true;
     const originalText = importButton.textContent;
     importButton.textContent = "추가하는 중...";
     try {
-      // 항상 병합 모드로 동작 (기존 데이터 삭제 안함)
+      // Always merge mode (do not delete existing data)
       // const shouldMerge = mergeCheckbox?.checked;
       // if (!shouldMerge) {
       //   await clearAllData();
@@ -423,29 +563,44 @@ export function setupImportButton() {
 
 async function exportProject() {
   if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
+
+  // Smart export: export only custom tiles that are currently placed
+  const placedTiles = getState('placedTiles');
+  const placedTileKeys = new Set(placedTiles.map(t => t.tileKey));
+
+  const allStoredTiles = await tileStore.getTiles(); // Get all custom tiles from store
+
+  const tilesToExport = allStoredTiles.filter(tile => placedTileKeys.has(tile.key));
+
+  if (tilesToExport.length === 0) {
+    alert("내보낼 커스텀 타일이 없습니다. (배치된 커스텀 타일만 내보내집니다)");
+    return;
+  }
+
   const zip = new JSZip();
-  const palette = getState('palette');
   const manifest = {
-    tiles: palette.map((tile) => ({
+    tiles: []
+  };
+
+  for (const tile of tilesToExport) {
+    const ext = tile.isSvg ? ".svg" : ".png";
+    const filename = `tiles/${tile.key}${ext}`;
+    const blob = dataURLToBlob(tile.dataUrl); // Assuming custom tiles have dataUrl
+    zip.file(filename, blob);
+
+    manifest.tiles.push({
       key: tile.key,
       label: tile.label,
       originY: tile.originY,
-      scale: tile.textureScale ?? tile.scale ?? 1,
       displayScale: tile.displayScale,
       gridWidth: tile.gridWidth ?? 1,
       gridHeight: tile.gridHeight ?? 1,
-      file: `tiles/${tile.key}${tile.isSvg ? ".svg" : ".png"}`,
-    })),
-  };
+      group: tile.group ?? '커스텀', // Include group information
+      file: filename,
+    });
+  }
 
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
-
-  for (const tile of palette) {
-    const ext = tile.isSvg ? ".svg" : ".png";
-    const filename = `tiles/${tile.key}${ext}`;
-    const blob = await getTileBlob(tile);
-    zip.file(filename, blob);
-  }
 
   const blob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(blob);
@@ -488,6 +643,10 @@ export async function importFromZipUrl(zipUrl) {
 
   let importedCount = 0;
   let skippedCount = 0;
+  // 타일셋 이름을 기본 그룹명으로 사용
+  const tilesetName = zipUrl.split('/').pop().replace(/\.zip$/i, '');
+  let importedGroup = tilesetName;
+
   for (const tileEntry of manifest.tiles) {
     try {
       if (existingLabels.has(tileEntry.label)) {
@@ -502,8 +661,22 @@ export async function importFromZipUrl(zipUrl) {
         continue;
       }
 
-      const imageBlob = await imageFile.async('blob');
+      // Determine MIME type from file extension
+      const ext = tileEntry.file.split('.').pop().toLowerCase();
+      const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+
+      // Read as Uint8Array and create Blob with correct MIME type
+      const imageArray = await imageFile.async('uint8array');
+      const imageBlob = new Blob([imageArray], { type: mimeType });
       const dataUrl = await blobToDataURL(imageBlob);
+
+      if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+        console.error(`Invalid dataUrl generated for ${tileEntry.label}:`, dataUrl ? dataUrl.substring(0, 50) : dataUrl);
+        continue;
+      }
+
+      // 실제 저장될 그룹명 결정
+      importedGroup = tileEntry.group || tilesetName;
 
       await tileStore.addTileWithKey({
         key: tileEntry.key,
@@ -513,6 +686,7 @@ export async function importFromZipUrl(zipUrl) {
         displayScale: tileEntry.displayScale ?? 1,
         gridWidth: tileEntry.gridWidth ?? 1,
         gridHeight: tileEntry.gridHeight ?? 1,
+        group: importedGroup
       });
 
       importedCount++;
@@ -527,8 +701,13 @@ export async function importFromZipUrl(zipUrl) {
     throw new Error('가져온 타일이 없습니다');
   }
 
-  await loadPaletteAndStart();
-  await registerMissingTextures();
+  // Wait a bit to ensure IndexedDB transaction is fully committed
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Switch active group to the actual imported group
+  setState('activeTileGroup', importedGroup);
+
+  await loadPaletteAndStart(); // This already calls registerMissingTextures internally
   await loadSavedPlacements();
 }
 
@@ -656,29 +835,61 @@ export async function registerMissingTextures() {
       tile.loaded = true;
       return;
     }
-    if (tile.isCustom && tile.dataUrl) {
+    if (tile.isCustom) {
+      if (!tile.dataUrl) {
+        // console.warn("Skipping custom tile with missing dataUrl:", tile.key);
+        return;
+      }
+
       promises.push(
-        new Promise((resolve) => {
+        new Promise(async (resolve) => {
           try {
-            if (!tile.dataUrl || !tile.dataUrl.startsWith('data:image/')) {
-              console.error("Invalid dataUrl for tile:", tile.key);
+            const dataUrl = tile.dataUrl;
+
+            if (!dataUrl.startsWith('data:image/')) {
+              console.error("Invalid dataUrl format for tile:", tile.key);
               resolve();
               return;
             }
 
-            game.textures.once('addtexture', (key) => {
-              if (key === tile.key) {
-                tile.loaded = true;
-                resolve();
-              }
-            });
-            game.textures.addBase64(tile.key, tile.dataUrl);
-            setTimeout(() => {
-              if (!tile.loaded) {
-                tile.loaded = game.textures.exists(tile.key);
-                resolve();
-              }
-            }, 1000);
+            // Create an image element to preload the image
+            const img = new Image();
+            img.onload = () => {
+              // Once image is loaded, add it to Phaser
+              const onTextureAdded = (key) => {
+                if (key === tile.key) {
+                  tile.loaded = true;
+                  game.textures.off('addtexture', onTextureAdded);
+                  resolve();
+                }
+              };
+              game.textures.on('addtexture', onTextureAdded);
+
+              game.textures.addBase64(tile.key, dataUrl);
+
+              // Check if it was added synchronously
+              setTimeout(() => {
+                if (game.textures.exists(tile.key)) {
+                  tile.loaded = true;
+                  game.textures.off('addtexture', onTextureAdded);
+                  resolve();
+                } else {
+                  // Wait a bit more
+                  setTimeout(() => {
+                    if (game.textures.exists(tile.key)) {
+                      tile.loaded = true;
+                    }
+                    game.textures.off('addtexture', onTextureAdded);
+                    resolve();
+                  }, 1000);
+                }
+              }, 100);
+            };
+            img.onerror = () => {
+              console.error("Failed to load image for tile:", tile.key);
+              resolve();
+            };
+            img.src = dataUrl;
           } catch (error) {
             console.error("Error loading texture:", tile.key, error);
             resolve();
@@ -691,19 +902,37 @@ export async function registerMissingTextures() {
         fetchAsDataURL(source).then((dataUrl) => {
           return new Promise((resolve) => {
             try {
-              game.textures.once('addtexture', (key) => {
+              const onTextureAdded = (key) => {
                 if (key === tile.key) {
                   tile.loaded = true;
+                  game.textures.off('addtexture', onTextureAdded);
                   resolve();
                 }
-              });
+              };
+              game.textures.on('addtexture', onTextureAdded);
+
               game.textures.addBase64(tile.key, dataUrl);
+
+              // Check immediately in case it was synchronous or already exists
+              if (game.textures.exists(tile.key)) {
+                tile.loaded = true;
+                game.textures.off('addtexture', onTextureAdded);
+                resolve();
+              }
+
               setTimeout(() => {
                 if (!tile.loaded) {
-                  tile.loaded = game.textures.exists(tile.key);
-                  resolve();
+                  if (game.textures.exists(tile.key)) {
+                    tile.loaded = true;
+                    resolve();
+                  } else {
+                    // Force resolve to avoid hanging, but log warning
+                    console.warn("Texture load timeout:", tile.key);
+                    resolve();
+                  }
+                  game.textures.off('addtexture', onTextureAdded);
                 }
-              }, 1000);
+              }, 2000); // Increased timeout
             } catch (error) {
               console.error("Error loading texture:", tile.key, error);
               resolve();
@@ -716,7 +945,24 @@ export async function registerMissingTextures() {
     }
   });
   await Promise.all(promises);
-  console.log("텍스처 로드 완료");
+
+  // Check loaded status
+  const loadedCount = palette.filter(t => t.loaded).length;
+  console.log(`텍스처 로드 완료: ${loadedCount}/${palette.length}개 로드됨`);
+
+  palette.forEach(tile => {
+    if (!tile.loaded) {
+      console.warn(`텍스처 로드 실패:`, tile.key);
+    }
+  });
+
+  // Refresh the scene to render newly loaded textures
+  if (game) {
+    const activeScene = game.scene.getAt(0);
+    if (activeScene) {
+      refreshSceneView(activeScene);
+    }
+  }
 }
 
 async function fetchAsDataURL(url) {

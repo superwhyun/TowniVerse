@@ -7,7 +7,7 @@ import { loadPaletteAndStart } from "./tile-manager.js";
  * 타일 팔레트 이벤트 설정
  */
 export function setupPalette() {
-  const paletteContainer = document.getElementById("tile-palette");
+  const paletteContainer = document.getElementById("palette");
   if (!paletteContainer) return;
 
   paletteContainer.addEventListener("click", (event) => {
@@ -21,7 +21,7 @@ export function setupPalette() {
  * 타일 팔레트 렌더링
  */
 export function renderPalette() {
-  const paletteContainer = document.getElementById("tile-palette");
+  const paletteContainer = document.getElementById("palette");
   if (!paletteContainer) return;
   paletteContainer.innerHTML = "";
 
@@ -103,14 +103,20 @@ export function filterAndRenderPalette() {
   const searchQuery = getState('searchQuery');
   const palette = getState('palette');
 
+  const activeGroup = getState('activeTileGroup') || '기본';
+
+  // 1. 그룹 필터링
+  let filteredByGroup = palette.filter(tile => (tile.group || '기본') === activeGroup);
+
+  // 2. 검색 필터링
   let filteredPalette;
   if (searchQuery) {
-    filteredPalette = palette.filter(tile =>
+    filteredPalette = filteredByGroup.filter(tile =>
       tile.label.toLowerCase().includes(searchQuery) ||
       tile.key.toLowerCase().includes(searchQuery)
     );
   } else {
-    filteredPalette = [...palette];
+    filteredPalette = filteredByGroup;
   }
   setState('filteredPalette', filteredPalette);
 

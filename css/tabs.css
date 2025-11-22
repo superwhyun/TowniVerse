@@ -1,0 +1,72 @@
+/* Palette Tabs */
+#palette-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 8px 0 8px;
+    background: #2c2c2c;
+    border-bottom: 1px solid #444;
+}
+
+.palette-tab {
+    flex: 1 0 calc(20% - 4px);
+    /* 5 items per row */
+    max-width: calc(20% - 4px);
+    height: 32px;
+    background: #3a3a3a;
+    color: #aaa;
+    border: 1px solid #444;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: pointer;
+    position: relative;
+    padding: 0 24px 0 8px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.palette-tab.active {
+    background: #1e1e1e;
+    color: #fff;
+    border-color: #555;
+    font-weight: 600;
+    z-index: 1;
+    margin-bottom: -1px;
+    border-bottom: 1px solid #1e1e1e;
+}
+
+.palette-tab:hover:not(.active) {
+    background: #444;
+}
+
+.palette-tab .close-btn {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #888;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.palette-tab:hover .close-btn {
+    opacity: 1;
+}
+
+.palette-tab .close-btn:hover {
+    background: rgba(255, 0, 0, 0.2);
+    color: #ff5555;
+}

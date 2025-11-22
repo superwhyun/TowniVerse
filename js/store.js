@@ -55,9 +55,11 @@ export function createTileStore() {
               displayScale: entry.displayScale ?? 1,
               gridWidth: entry.gridWidth ?? 1,
               gridHeight: entry.gridHeight ?? 1,
-              dataUrl: entry.dataUrl,
+              imageBlob: entry.imageBlob, // Store Blob instead of dataUrl
+              dataUrl: entry.dataUrl, // Keep for backward compatibility
               isCustom: true,
               createdAt: entry.createdAt || 0,
+              group: entry.group || '커스텀',
               id: entry.id,
             }))
             .sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -70,16 +72,18 @@ export function createTileStore() {
     /**
      * 새 타일 추가 (자동 키 생성)
      */
-    async addTile({ label, originY, dataUrl, displayScale = 1, gridWidth = 1, gridHeight = 1 }) {
+    async addTile({ label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀' }) {
       const key = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       const entry = {
         key,
         label,
         originY,
-        dataUrl,
+        imageBlob: imageBlob || null, // Prefer Blob
+        dataUrl: imageBlob ? null : dataUrl, // Only use dataUrl if no Blob
         displayScale,
         gridWidth,
         gridHeight,
+        group,
         createdAt: Date.now(),
       };
 
@@ -96,22 +100,29 @@ export function createTileStore() {
     /**
      * 타일 추가 (키 지정)
      */
-    async addTileWithKey({ key, label, originY, dataUrl, displayScale = 1, gridWidth = 1, gridHeight = 1 }) {
+    async addTileWithKey({ key, label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀' }) {
       const entry = {
         key,
         label,
         originY,
-        dataUrl,
+        imageBlob: imageBlob || null, // Prefer Blob
+        dataUrl: imageBlob ? null : dataUrl, // Only use dataUrl if no Blob
         displayScale,
         gridWidth,
         gridHeight,
+        group,
         createdAt: Date.now(),
       };
 
-      const store = await tx(TILES_STORE, "readwrite");
+      const db = await dbPromise;
+      const transaction = db.transaction(TILES_STORE, "readwrite");
+      const store = transaction.objectStore(TILES_STORE);
+
       await new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+
         const request = store.add(entry);
-        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
       });
 
