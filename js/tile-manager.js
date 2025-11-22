@@ -401,116 +401,174 @@ export function setupImportButton() {
   const urlInput = document.getElementById("import-url-input");
   const confirmBtn = document.getElementById("import-confirm");
   const cancelBtn = document.getElementById("import-cancel");
-  const mergeCheckbox = document.getElementById("import-merge");
 
-  importButton.addEventListener("click", () => {
-    const baseUrl = `${window.location.protocol}//${window.location.host}/tilesets/`;
-    urlInput.value = baseUrl;
-    modal.classList.add("visible");
+  let currentTilesetPage = 0;
+  const TILESETS_PER_PAGE = 25;
+  let allTilesets = [];
+  let selectedTilesetFile = null; // Track selected file separately
+  let currentDirectory = ""; // Track current directory
 
-    // 타일셋 목록 불러오기 (디렉토리 파싱)
+  // Helper to fetch and parse directory listing
+  async function fetchTilesets(directoryUrl) {
     const listContainer = document.getElementById("tileset-list");
-    if (listContainer) {
-      listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">목록 불러오는 중...</div>';
-      fetch('tilesets/?t=' + Date.now())
-        .then(res => res.text())
-        .then(html => {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          const links = Array.from(doc.querySelectorAll('a'));
+    if (!listContainer) return;
 
-          const allFiles = links
-            .map(link => link.getAttribute('href'))
-            .filter(Boolean)
-            .map(href => {
-              // URL 디코딩 및 파일명만 추출 (./gundams.png -> gundams.png)
-              try {
-                return decodeURIComponent(href).split('/').pop();
-              } catch (e) {
-                return href.split('/').pop();
-              }
-            })
-            .filter(f => f && f !== '..' && f !== '.'); // 상위/현재 디렉토리 제외
+    // Ensure URL ends with /
+    if (!directoryUrl.endsWith('/')) directoryUrl += '/';
+    currentDirectory = directoryUrl;
 
-          const zipFiles = allFiles.filter(f => f.toLowerCase().endsWith('.zip'));
-          const imageFiles = new Set(allFiles.filter(f => /\.(png|jpg|jpeg)$/i.test(f)));
+    listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; grid-column: 1/-1; text-align: center;">목록 불러오는 중...</div>';
 
-          const tilesets = zipFiles.map(zipFile => {
-            const fileName = zipFile;
-            const name = fileName.replace(/\.zip$/i, '');
+    try {
+      const res = await fetch(directoryUrl + '?t=' + Date.now());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
 
-            // 이미지 찾기: 같은 이름의 png, jpg, jpeg
-            let imageFile = null;
-            if (imageFiles.has(name + '.png')) imageFile = name + '.png';
-            else if (imageFiles.has(name + '.jpg')) imageFile = name + '.jpg';
-            else if (imageFiles.has(name + '.jpeg')) imageFile = name + '.jpeg';
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const links = Array.from(doc.querySelectorAll('a'));
 
-            return {
-              name: name,
-              file: fileName,
-              image: imageFile
-            };
-          });
-
-          listContainer.innerHTML = '';
-          if (tilesets.length > 0) {
-            tilesets.forEach(ts => {
-              const item = document.createElement('div');
-              item.style.cssText = `
-                display: flex;
-                align-items: center;
-                gap: 0.8rem;
-                padding: 0.6rem;
-                background: rgba(255,255,255,0.05);
-                border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.2s;
-              `;
-
-              let imageHtml = '';
-              if (ts.image) {
-                imageHtml = `<img src="tilesets/${ts.image}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px; background: rgba(0,0,0,0.2);" />`;
-              } else {
-                imageHtml = `<div style="width: 48px; height: 48px; border-radius: 4px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">📦</div>`;
-              }
-
-              item.innerHTML = `
-                ${imageHtml}
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ts.name}</div>
-                  <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ts.file}</div>
-                </div>
-              `;
-              item.onmouseover = () => {
-                item.style.background = 'rgba(255,255,255,0.1)';
-                item.style.borderColor = 'rgba(255,255,255,0.3)';
-              };
-              item.onmouseout = () => {
-                item.style.background = 'rgba(255,255,255,0.05)';
-                item.style.borderColor = 'rgba(255,255,255,0.1)';
-              };
-              item.onclick = () => {
-                urlInput.value = `${baseUrl}${ts.file}`;
-                // 시각적 피드백
-                Array.from(listContainer.children).forEach(c => c.style.borderColor = 'rgba(255,255,255,0.1)');
-                item.style.borderColor = '#ffe29a';
-              };
-              listContainer.appendChild(item);
-            });
-          } else {
-            listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem;">사용 가능한 타일셋이 없습니다.</div>';
+      const allFiles = links
+        .map(link => link.getAttribute('href'))
+        .filter(Boolean)
+        .map(href => {
+          try {
+            return decodeURIComponent(href).split('/').pop();
+          } catch (e) {
+            return href.split('/').pop();
           }
         })
-        .catch(err => {
-          console.error('타일셋 목록 로드 실패:', err);
-          listContainer.innerHTML = '<div style="color: #ff7171; font-size: 0.85rem;">목록을 불러올 수 없습니다.</div>';
-        });
+        .filter(f => f && f !== '..' && f !== '.');
+
+      const zipFiles = allFiles.filter(f => f.toLowerCase().endsWith('.zip'));
+      const imageFiles = new Set(allFiles.filter(f => /\.(png|jpg|jpeg)$/i.test(f)));
+
+      allTilesets = zipFiles.map(zipFile => {
+        const fileName = zipFile;
+        const name = fileName.replace(/\.zip$/i, '');
+
+        let imageFile = null;
+        if (imageFiles.has(name + '.png')) imageFile = name + '.png';
+        else if (imageFiles.has(name + '.jpg')) imageFile = name + '.jpg';
+        else if (imageFiles.has(name + '.jpeg')) imageFile = name + '.jpeg';
+
+        return {
+          name: name,
+          file: fileName,
+          image: imageFile
+        };
+      });
+
+      currentTilesetPage = 0;
+      selectedTilesetFile = null; // Reset selection on directory change
+      renderTilesetList();
+
+    } catch (err) {
+      console.error('Failed to load tilesets:', err);
+      listContainer.innerHTML = `<div style="color: #ff6b6b; font-size: 0.85rem; grid-column: 1/-1; text-align: center;">목록을 불러오지 못했습니다.<br>${err.message}</div>`;
+      allTilesets = [];
     }
+  }
+
+  function renderTilesetList() {
+    const listContainer = document.getElementById("tileset-list");
+    const paginationContainer = document.getElementById("tileset-pagination");
+    if (!listContainer || !paginationContainer) return;
+
+    listContainer.innerHTML = '';
+    paginationContainer.innerHTML = '';
+
+    if (allTilesets.length === 0) {
+      listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; grid-column: 1/-1; text-align: center;">사용 가능한 타일셋이 없습니다.</div>';
+      return;
+    }
+
+    const totalPages = Math.ceil(allTilesets.length / TILESETS_PER_PAGE);
+    const start = currentTilesetPage * TILESETS_PER_PAGE;
+    const end = Math.min(start + TILESETS_PER_PAGE, allTilesets.length);
+    const pageItems = allTilesets.slice(start, end);
+
+    // Render Grid Items
+    pageItems.forEach(ts => {
+      const item = document.createElement('div');
+      item.className = 'tileset-item';
+      if (selectedTilesetFile === ts.file) {
+        item.classList.add('selected');
+      }
+
+      let imageHtml = '';
+      if (ts.image) {
+        // Use currentDirectory for image path
+        imageHtml = `<img src="${currentDirectory}${ts.image}" class="tileset-image" />`;
+      } else {
+        imageHtml = `<div class="tileset-placeholder">📦</div>`;
+      }
+
+      item.innerHTML = `
+        ${imageHtml}
+        <div class="tileset-info">
+          <div class="tileset-name" title="${ts.name}">${ts.name}</div>
+          <div class="tileset-file" title="${ts.file}">${ts.file}</div>
+        </div>
+      `;
+
+      item.onclick = () => {
+        // Just select, don't change URL input
+        selectedTilesetFile = ts.file;
+
+        // Visual feedback
+        Array.from(listContainer.children).forEach(c => c.classList.remove('selected'));
+        item.classList.add('selected');
+      };
+      listContainer.appendChild(item);
+    });
+
+    // Fill empty slots if needed (optional, for consistent grid)
+    // ...
+
+    // Render Pagination Controls
+    if (totalPages > 1) {
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'pagination-btn';
+      prevBtn.textContent = '이전';
+      prevBtn.disabled = currentTilesetPage === 0;
+      prevBtn.onclick = () => {
+        if (currentTilesetPage > 0) {
+          currentTilesetPage--;
+          renderTilesetList();
+        }
+      };
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'pagination-btn';
+      nextBtn.textContent = '다음';
+      nextBtn.disabled = currentTilesetPage >= totalPages - 1;
+      nextBtn.onclick = () => {
+        if (currentTilesetPage < totalPages - 1) {
+          currentTilesetPage++;
+          renderTilesetList();
+        }
+      };
+
+      const info = document.createElement('span');
+      info.className = 'pagination-info';
+      info.textContent = `${currentTilesetPage + 1} / ${totalPages}`;
+
+      paginationContainer.appendChild(prevBtn);
+      paginationContainer.appendChild(info);
+      paginationContainer.appendChild(nextBtn);
+    }
+  }
+
+  importButton.addEventListener("click", () => {
+    const defaultUrl = `${window.location.protocol}//${window.location.host}/tilesets/`;
+    urlInput.value = defaultUrl;
+    modal.classList.add("visible");
+
+    fetchTilesets(defaultUrl);
 
     setTimeout(() => {
       urlInput.focus();
-      // urlInput.setSelectionRange(urlInput.value.length, urlInput.value.length);
     }, 100);
   });
 
@@ -519,21 +577,33 @@ export function setupImportButton() {
   });
 
   confirmBtn.addEventListener("click", async () => {
+    // If a file is selected from the grid, use that
+    if (selectedTilesetFile) {
+      const fullUrl = currentDirectory + selectedTilesetFile;
+      await executeImport(fullUrl);
+      return;
+    }
+
+    // Otherwise, check if the URL input itself points to a file
     const url = urlInput.value.trim();
     if (!url) return;
 
-    modal.classList.remove("visible");
+    // If URL ends in .zip, try to import it directly
+    if (url.toLowerCase().endsWith('.zip')) {
+      await executeImport(url);
+    } else {
+      // Assume it's a directory and try to load it
+      fetchTilesets(url);
+    }
+  });
 
+  async function executeImport(url) {
+    modal.classList.remove("visible");
     importButton.disabled = true;
     const originalText = importButton.textContent;
     importButton.textContent = "추가하는 중...";
-    try {
-      // Always merge mode (do not delete existing data)
-      // const shouldMerge = mergeCheckbox?.checked;
-      // if (!shouldMerge) {
-      //   await clearAllData();
-      // }
 
+    try {
       if (url.toLowerCase().endsWith('.zip')) {
         await importFromZipUrl(url);
       } else {
@@ -546,11 +616,17 @@ export function setupImportButton() {
       importButton.disabled = false;
       importButton.textContent = originalText;
     }
-  });
+  }
 
   urlInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") {
-      confirmBtn.click();
+      // If it looks like a directory, load it
+      const url = urlInput.value.trim();
+      if (url && !url.toLowerCase().endsWith('.zip')) {
+        fetchTilesets(url);
+      } else {
+        confirmBtn.click();
+      }
     }
   });
 

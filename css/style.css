@@ -101,6 +101,13 @@ aside>div:first-child {
 
 .tile-swatch {
   position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.02);
 }
@@ -398,17 +405,148 @@ aside>div:first-child {
 .import-card {
   background: #10161f;
   border-radius: 18px;
-  padding: 1.5rem;
-  width: min(500px, 90vw);
+  padding: 2rem;
+  width: 95vw;
+  height: 85vh;
+  max-width: 1800px;
+  max-height: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.tileset-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 1rem;
+  flex: 1;
+  overflow: hidden;
+  /* Prevent scrolling */
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 0;
+  /* Important for flex child to shrink */
+}
+
+.tileset-item {
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 35px 50px rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: row;
+  /* Horizontal layout */
+  align-items: center;
+  gap: 1.5rem;
+  height: 100%;
+  /* Fill grid cell */
+  min-height: 0;
+  /* Allow shrinking */
+  box-sizing: border-box;
+}
+
+.tileset-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.tileset-item.selected {
+  border-color: var(--accent);
+  background: rgba(255, 189, 74, 0.1);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tileset-image {
+  width: 120px;
+  height: 120px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.tileset-placeholder {
+  width: 120px;
+  height: 120px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+}
+
+.tileset-info {
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+  /* Enable text truncation */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.tileset-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tileset-file {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.5rem;
+}
+
+.pagination-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .import-card h3 {
-  margin: 0;
+  margin-bottom: 0.5rem;
   font-size: 1.2rem;
 }
 
@@ -429,10 +567,21 @@ aside>div:first-child {
   font-family: monospace;
 }
 
+.import-card input[type="text"] {
+  width: 100%;
+  padding: 0.8rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.95rem;
+}
+
 .import-actions {
   display: flex;
-  gap: 0.5rem;
   justify-content: flex-end;
+  gap: 0.8rem;
+  margin-top: auto;
 }
 
 .import-actions button {
