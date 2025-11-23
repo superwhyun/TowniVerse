@@ -18,6 +18,7 @@ export function createCalibrator() {
   let points = [];
   let currentGridWidth = 1;
   let currentGridHeight = 1;
+  let isHDMode = false;
 
   canvas.addEventListener("click", (event) => {
     if (!image || points.length >= 4) return;
@@ -58,14 +59,17 @@ export function createCalibrator() {
         left: points[1],
       };
 
-      const diamondWidth = TILE_WIDTH * currentGridWidth;
-      const diamondHeight = TILE_HEIGHT * currentGridHeight;
+      console.log(`[Calibrator] Confirming. isHDMode: ${isHDMode}`);
+
+      const hdScale = isHDMode ? 2 : 1;
+      const diamondWidth = TILE_WIDTH * currentGridWidth * hdScale;
+      const diamondHeight = TILE_HEIGHT * currentGridHeight * hdScale;
 
       const outputWidth = diamondWidth * 2 * 2;
-      const outputHeight = (TILE_HEIGHT * currentGridHeight + TILE_HEIGHT * 3) * 2;
+      const outputHeight = (TILE_HEIGHT * currentGridHeight + TILE_HEIGHT * 3) * 2 * hdScale;
 
       const centerX = outputWidth / 2;
-      const baseY = outputHeight - TILE_HEIGHT * 2;
+      const baseY = outputHeight - TILE_HEIGHT * 2 * hdScale;
 
       const dstTop = { x: centerX, y: baseY - diamondHeight };
       const dstRight = { x: centerX + diamondWidth, y: baseY };
@@ -195,14 +199,20 @@ export function createCalibrator() {
   }
 
   return {
-    async open(file, gridWidth = 1, gridHeight = 1) {
+    async open(file, gridWidth = 1, gridHeight = 1, isHD = false, isTR = false) {
       currentGridWidth = gridWidth;
       currentGridHeight = gridHeight;
+      isHDMode = isHD;
+      console.log(`[Calibrator] Open. isHD: ${isHD}, isTR: ${isTR}, Grid: ${gridWidth}x${gridHeight}`);
       const dataUrl = await blobToDataURL(file);
       const originalImage = await loadImageElement(dataUrl);
 
-      // 흰색 배경을 투명하게 변환
-      image = await removeWhiteBackground(originalImage);
+      // TR 모드일 때만 흰색 배경 제거 (외부만)
+      if (isTR) {
+        image = await removeOuterWhiteBackground(originalImage);
+      } else {
+        image = originalImage;
+      }
 
       points = [];
       syncCanvasSize();
@@ -445,10 +455,15 @@ async function warpImageWithPerspective(image, srcPts, dstPts, outputWidth, outp
     const ctx = resultCanvas.getContext('2d');
 
     // WebGL의 Y축은 아래에서 위로 향하므로, 이미지를 Y축 기준으로 뒤집어야 함
+    // 또한 glCanvas가 outputHeight보다 클 경우(예: HD 처리 후 일반 처리 시),
+    // WebGL은 하단(0,0)에 그렸지만 HTML Canvas는 상단(0,0)이 기준이므로
+    // HTML Canvas 좌표계에서는 하단(glCanvas.height - outputHeight)에 이미지가 있음.
+    const sourceY = glCanvas.height - outputHeight;
+
     ctx.save();
     ctx.translate(0, outputHeight);
     ctx.scale(1, -1);
-    ctx.drawImage(glCanvas, 0, 0, outputWidth, outputHeight, 0, 0, outputWidth, outputHeight);
+    ctx.drawImage(glCanvas, 0, sourceY, outputWidth, outputHeight, 0, 0, outputWidth, outputHeight);
     ctx.restore();
 
     return await new Promise((resolve) => {
@@ -643,6 +658,73 @@ async function removeWhiteBackground(image) {
   ctx.putImageData(imageData, 0, 0);
 
   // 변환된 이미지를 새로운 Image 객체로 반환
+  const dataUrl = canvas.toDataURL('image/png');
+  return await loadImageElement(dataUrl);
+}
+
+/**
+ * 이미지의 외부 흰색 배경만 투명하게 변환 (Flood Fill 알고리즘 사용)
+ */
+async function removeOuterWhiteBackground(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(image, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // 흰색 임계값
+  const whiteThreshold = 240;
+
+  // 방문 여부 확인용 배열
+  const visited = new Uint8Array(width * height);
+  const queue = [];
+
+  // 가장자리에서 시작 (상하좌우 테두리)
+  for (let x = 0; x < width; x++) {
+    queue.push(x, 0); // 상단
+    queue.push(x, height - 1); // 하단
+  }
+  for (let y = 1; y < height - 1; y++) {
+    queue.push(0, y); // 좌측
+    queue.push(width - 1, y); // 우측
+  }
+
+  // BFS Flood Fill
+  while (queue.length > 0) {
+    const y = queue.pop();
+    const x = queue.pop();
+
+    const idx = y * width + x;
+    if (visited[idx]) continue;
+    visited[idx] = 1;
+
+    const pixelIdx = idx * 4;
+    const r = data[pixelIdx];
+    const g = data[pixelIdx + 1];
+    const b = data[pixelIdx + 2];
+    const a = data[pixelIdx + 3];
+
+    // 흰색이 아니거나 이미 투명하면 더 이상 탐색하지 않음
+    if (a === 0 || r < whiteThreshold || g < whiteThreshold || b < whiteThreshold) {
+      continue;
+    }
+
+    // 흰색이면 투명하게 만듦
+    data[pixelIdx + 3] = 0;
+
+    // 4방향 탐색
+    if (x > 0) { queue.push(x - 1, y); }
+    if (x < width - 1) { queue.push(x + 1, y); }
+    if (y > 0) { queue.push(x, y - 1); }
+    if (y < height - 1) { queue.push(x, y + 1); }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
   const dataUrl = canvas.toDataURL('image/png');
   return await loadImageElement(dataUrl);
 }

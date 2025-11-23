@@ -259,6 +259,10 @@ export function setupUploader() {
   const labelInput = document.getElementById("upload-label");
   const status = document.getElementById("upload-status");
   const groupInput = document.getElementById("upload-group"); // New group input
+  const hdToggle = document.getElementById("hd-toggle");
+  const trToggle = document.getElementById("tr-toggle");
+
+  // Removed manual click listener as checkbox handles state natively
 
   if (!dropZone || !fileInput) return;
 
@@ -306,19 +310,32 @@ export function setupUploader() {
     const group = (groupInput?.value || '커스텀').trim(); // Get group from input, default to '커스텀'
     const gridWidth = getState('selectedGridSize');
     const gridHeight = gridWidth;
+    const isHD = hdToggle ? hdToggle.checked : false;
+    const isTR = trToggle ? trToggle.checked : false;
+    console.log(`[Upload] Starting upload. isHD: ${isHD}, isTR: ${isTR}, Grid: ${gridWidth}x${gridHeight}`);
     status.textContent = "이미지 준비...";
 
     try {
-      const basePreview = await resizePngBlob(file, TILE_WIDTH * 4);
+      // HD mode uses 2x resolution (TILE_WIDTH * 8 instead of 4)
+      const resizeTargetWidth = isHD ? TILE_WIDTH * 8 : TILE_WIDTH * 4;
+      console.log(`[Upload] Resize target width: ${resizeTargetWidth}`);
+      const basePreview = await resizePngBlob(file, resizeTargetWidth);
+      console.log(`[Upload] Resized blob size: ${basePreview.size}`);
       status.textContent = "보정 준비...";
-      const calibration = await calibrator.open(basePreview, gridWidth, gridHeight);
+      const calibration = await calibrator.open(basePreview, gridWidth, gridHeight, isHD, isTR);
 
       const finalBlob = calibration?.blob || basePreview;
+      console.log(`[Upload] Final blob size: ${finalBlob.size}`);
       const dataUrl = await blobToDataURL(finalBlob);
 
       const usedCalibration = !!calibration;
-      const displayScale = usedCalibration ? 0.5 : 1;
-      const heightScale = usedCalibration ? 2 : 1;
+      let displayScale = usedCalibration ? 0.5 : 1;
+      let heightScale = usedCalibration ? 2 : 1;
+
+      if (isHD) {
+        displayScale *= 0.5;
+        heightScale *= 2;
+      }
 
       const img = await loadImageElement(dataUrl);
       const diamondCenterFromBottom = TILE_HEIGHT * heightScale / 2;
@@ -332,6 +349,7 @@ export function setupUploader() {
         gridWidth,
         gridHeight,
         group, // Save the group
+        isHD,
       });
       status.textContent = "업로드 완료! 팔레트를 갱신합니다.";
 

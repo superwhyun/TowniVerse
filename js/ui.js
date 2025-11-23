@@ -63,6 +63,13 @@ export function renderPalette() {
     sizeLabel.dataset.size = size.toString();
     button.appendChild(sizeLabel);
 
+    if (tile.isHD) {
+      const hdLabel = document.createElement("span");
+      hdLabel.className = "tile-hd";
+      hdLabel.textContent = "HD";
+      button.appendChild(hdLabel);
+    }
+
     if (tile.isCustom) {
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";

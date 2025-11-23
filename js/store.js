@@ -60,6 +60,7 @@ export function createTileStore() {
               isCustom: true,
               createdAt: entry.createdAt || 0,
               group: entry.group || '커스텀',
+              isHD: !!entry.isHD,
               id: entry.id,
             }))
             .sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -72,7 +73,7 @@ export function createTileStore() {
     /**
      * 새 타일 추가 (자동 키 생성)
      */
-    async addTile({ label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀' }) {
+    async addTile({ label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀', isHD = false }) {
       const key = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       const entry = {
         key,
@@ -84,6 +85,7 @@ export function createTileStore() {
         gridWidth,
         gridHeight,
         group,
+        isHD,
         createdAt: Date.now(),
       };
 
@@ -100,7 +102,7 @@ export function createTileStore() {
     /**
      * 타일 추가 (키 지정)
      */
-    async addTileWithKey({ key, label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀' }) {
+    async addTileWithKey({ key, label, originY, dataUrl, imageBlob, displayScale = 1, gridWidth = 1, gridHeight = 1, group = '커스텀', isHD = false }) {
       const entry = {
         key,
         label,
@@ -111,6 +113,7 @@ export function createTileStore() {
         gridWidth,
         gridHeight,
         group,
+        isHD,
         createdAt: Date.now(),
       };
 
