@@ -451,9 +451,9 @@ export function setupImportButton() {
         .filter(Boolean)
         .map(href => {
           try {
-            return decodeURIComponent(href).split('/').pop();
+            return decodeURIComponent(href).split(/[/\\]/).pop();
           } catch (e) {
-            return href.split('/').pop();
+            return href.split(/[/\\]/).pop();
           }
         })
         .filter(f => f && f !== '..' && f !== '.');
@@ -579,7 +579,7 @@ export function setupImportButton() {
   }
 
   importButton.addEventListener("click", () => {
-    const defaultUrl = `${window.location.protocol}//${window.location.host}/tilesets/`;
+    const defaultUrl = "tilesets/";
     urlInput.value = defaultUrl;
     modal.classList.add("visible");
 
