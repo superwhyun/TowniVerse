@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const TILESETS_DIR = 'tilesets';
+const TILESETS_DIR = 'public/tilesets';
 const OUTPUT_FILE = 'public/tilesets.json';
 
 // Ensure public directory exists
