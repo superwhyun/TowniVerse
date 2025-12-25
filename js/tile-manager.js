@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { TILE_WIDTH, TILE_HEIGHT, TILES_PER_PAGE } from "./constants.js";
 import { state, setState, getState } from "./state.js";
 import { tileStore } from "./store.js";
@@ -427,17 +428,51 @@ export function setupImportButton() {
   let currentDirectory = ""; // Track current directory
 
   // Helper to fetch and parse directory listing
+  // Helper to fetch and parse directory listing
   async function fetchTilesets(directoryUrl) {
     const listContainer = document.getElementById("tileset-list");
     if (!listContainer) return;
 
-    // Ensure URL ends with /
-    if (!directoryUrl.endsWith('/')) directoryUrl += '/';
-    currentDirectory = directoryUrl;
+    // Ensure URL ends with / if it is a directory path, but we will try manifest first
+    currentDirectory = directoryUrl.endsWith('/') ? directoryUrl : directoryUrl + '/';
 
     listContainer.innerHTML = '<div style="color: rgba(255,255,255,0.5); font-size: 0.85rem; grid-column: 1/-1; text-align: center;">목록 불러오는 중...</div>';
 
     try {
+      // Try to fetch tilesets.json first (from public/tilesets.json which is served at root /tilesets.json)
+      // Check if we are looking at the default local directory
+      let manifestUrl = null;
+
+      if (directoryUrl.includes('tilesets') && !directoryUrl.startsWith('http')) {
+        manifestUrl = 'tilesets.json';
+      } else if (directoryUrl === 'tilesets/') {
+        manifestUrl = 'tilesets.json';
+      }
+
+      if (manifestUrl) {
+        try {
+          const res = await fetch(manifestUrl + '?t=' + Date.now());
+          if (res.ok) {
+            const data = await res.json();
+            if (data.tilesets) {
+              allTilesets = data.tilesets;
+
+              // Fix up paths since they are relative to tilesets/ folder
+              // We leave them as filenames because executeImport expects fullUrl = currentDirectory + file
+              // And currentDirectory is "tilesets/"
+
+              currentTilesetPage = 0;
+              selectedTilesetFile = null;
+              renderTilesetList();
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load tilesets.json, falling back to directory listing', e);
+        }
+      }
+
+      // Fallback to original directory listing logic (for external URLs or if JSON fails)
       const res = await fetch(directoryUrl + '?t=' + Date.now());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
@@ -531,8 +566,12 @@ export function setupImportButton() {
       `;
 
       item.onclick = () => {
-        // Just select, don't change URL input
+        // Update URL input and selection
         selectedTilesetFile = ts.file;
+        const urlInput = document.getElementById("import-url-input");
+        if (urlInput) {
+          urlInput.value = currentDirectory + ts.file;
+        }
 
         // Visual feedback
         Array.from(listContainer.children).forEach(c => c.classList.remove('selected'));
@@ -656,7 +695,7 @@ export function setupImportButton() {
 }
 
 async function exportProject() {
-  if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
+  // if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다."); // Removed check
 
   // Smart export: export only custom tiles that are currently placed
   const placedTiles = getState('placedTiles');
@@ -708,7 +747,7 @@ async function exportProject() {
 }
 
 export async function importFromZipUrl(zipUrl) {
-  if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다.");
+  // if (!window.JSZip) throw new Error("JSZip을 불러오지 못했습니다."); // Removed check
 
   console.log('Fetching ZIP from:', zipUrl);
 
@@ -936,7 +975,7 @@ export async function registerMissingTextures() {
       }
 
       promises.push(
-        new Promise(async (resolve) => {
+        new Promise((resolve) => {
           try {
             const dataUrl = tile.dataUrl;
 

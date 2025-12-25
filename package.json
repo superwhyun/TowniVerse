@@ -1,0 +1,46 @@
+{
+  "name": "towniverse",
+  "version": "1.0.0",
+  "description": "An isometric tile-based landscape builder powered by Phaser 3. Create and manage custom isometric worlds by uploading images, converting them to tiles, and placing them on an interactive grid.",
+  "type": "module",
+  "main": "debug_tilesets.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "generate-manifest": "node scripts/generate-tilesets.js",
+    "predev": "npm run generate-manifest",
+    "prebuild": "npm run generate-manifest",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/superwhyun/TowniVerse.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/superwhyun/TowniVerse/issues"
+  },
+  "homepage": "https://github.com/superwhyun/TowniVerse#readme",
+  "devDependencies": {
+    "@vitest/ui": "^4.0.16",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "jsdom": "^27.3.0",
+    "prettier": "^3.7.4",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "phaser": "^3.90.0"
+  }
+}

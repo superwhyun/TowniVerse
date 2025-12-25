@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT, WORLD_BOUNDS, GRID_BUFFER } from "./constants.js";
 import { state, getState, setState } from "./state.js";
 import { tileStore } from "./store.js";

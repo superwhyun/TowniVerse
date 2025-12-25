@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT, gridOrigin } from "./constants.js";
 
 /**
